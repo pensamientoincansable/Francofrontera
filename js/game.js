@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { AudioEngine } from './audio.js';
 import { FX } from './fx.js';
-import { World } from './world.js';
+import { World, SNIPER_EYE, PARAPET_TOP } from './world.js';
 import { Entities, ZTYPES } from './entities.js';
 
 const $ = id => document.getElementById(id);
@@ -45,7 +45,7 @@ const S = {
   trauma: 0, time: 0,
   killsTimes: [], streakBest: 0, explosiveKills: 0, headWave: 0, killsWave: 0, civsLostWave: 0,
   objectives: [], pendingSpawns: [], spawnT: 0,
-  _lastTurretAlert: 0,
+  _lastTurretAlert: 0, _lastSiegeAlert: 0,
   settings: { sens: 1, master: 80, music: 55, sfx: 90, quality: 'high', voice: 'on' },
 };
 try {
@@ -70,7 +70,10 @@ scene.background = new THREE.Color(0x07131a);
 
 // CÁMARA ELEVADA Y ALEJADA (Nido de francotirador en la torre de vigilancia)
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 700);
-camera.position.set(0, 13.5, 34);
+// Ojo del tirador: de pie tras el parapeto bajo de la torre (apoyado en los sacos).
+// La coronación del parapeto queda ~0.81 m por debajo y ~0.95 m por delante, así el
+// muro solo ocupa la franja inferior del cuadro y el campo de tiro queda despejado.
+camera.position.set(SNIPER_EYE.x, SNIPER_EYE.y, SNIPER_EYE.z);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
 
@@ -134,6 +137,14 @@ const ent = new Entities(scene, fx, {
   },
   allyShot() { audio.shoot('ally'); },
   allyKill() {},
+  towerSiege() {
+    // Zombis al pie de la torre: avisar para que el jugador mire hacia abajo
+    if (!S.playing || S.paused) return;
+    if (S.time - S._lastSiegeAlert < 14) return;
+    S._lastSiegeAlert = S.time;
+    toast('⚠ INFECTADOS AL PIE DE LA TORRE · MIRA HACIA ABAJO');
+    radio('¡Están trepando por los pilares! Mira hacia abajo y dispárales.', 'Infectados al pie de la torre.');
+  },
   turretShot() { audio.shoot('turret'); },
   turretKill(z) { onKill(z); },
   summon(boss) {
@@ -845,6 +856,7 @@ function upCost(u) { return u.base * (S.up[u.id] + 1); }
 function openShop() {
   if (!S.playing) return;
   S.shopOpen = true; S.paused = true;
+  setZoom(false);   // la mira no debe quedarse encima del arsenal
   audio.suspend();
   const sm = $('shopMenu');
   if (sm) sm.classList.remove('hidden');
@@ -910,7 +922,7 @@ function resetRun() {
     trauma: 0, time: 0,
     killsTimes: [], streakBest: 0, explosiveKills: 0, headWave: 0, killsWave: 0, civsLostWave: 0,
     objectives: [], pendingSpawns: [], spawnT: 0,
-    _lastTurretAlert: 0, _warn30: false,
+    _lastTurretAlert: 0, _lastSiegeAlert: 0, _warn30: false,
   });
   S.specPool = { fire: 13, shock: 13 };
   S.wstate = WEAPONS.map(w => ({ ammo: w.mag, reloading: false, reloadT: 0, cd: 0 }));
@@ -1005,6 +1017,7 @@ function pauseGame() {
   if (!S.playing || S.screen !== 'game') return;
   if (S.shopOpen) { closeShop(); return; }
   S.paused = true;
+  setZoom(false);   // la mira no debe quedarse encima del menú de pausa
   audio.suspend();
   try { speechSynthesis.cancel(); } catch (e) {}
   const pm = $('pauseMenu');
@@ -1124,6 +1137,7 @@ addEventListener('keydown', e => {
   if (k === 'Escape' || k === 'KeyP') {
     if (!$('settingsMenu').classList.contains('hidden')) closeSettings();
     else if (!$('helpMenu').classList.contains('hidden')) $('helpMenu').classList.add('hidden');
+    else if (k === 'Escape' && S.zoomed) setZoom(false);   // ESC sale de la mira antes que pausar
     else if (S.paused && !S.shopOpen) resumeGame();
     else pauseGame();
     return;
@@ -1232,6 +1246,8 @@ bindTouchBtn('btnTouchFire', ()=>{ S.firing=true; tryFire(); }, {
 })();
 
 bindTouchBtn('btnTouchScope', ()=> setZoom(!S.zoomed));
+// Botón dentro de la propia mira telescópica para quitarla sin soltar el ratón/el dedo
+bindTouchBtn('btnScopeExit', ()=> setZoom(false));
 bindTouchBtn('btnTouchReload', ()=> startReload(S.curW));
 bindTouchBtn('btnTouchTurret', ()=> deployTurret());
 bindTouchBtn('btnTouchRepair', ()=> repairFence());
@@ -1342,12 +1358,21 @@ function updateStorm(dt) {
 }
 
 // ---------------- cámara / puntería desde la torre elevada ----------------
-let camYaw = 0, camPitch = -0.21, camFov = 62;
+// La valla está en z = -1; el ojo del tirador en SNIPER_EYE. Con esa separación la base
+// de la valla cae ~23° por debajo del horizonte, así que el encuadre neutro se inclina
+// hacia abajo (si no, el suelo quedaría fuera de cuadro y solo se vería cielo y parapeto).
+const FENCE_Z = -1;
+const CAM_BASE_PITCH = -Math.atan2(SNIPER_EYE.y, SNIPER_EYE.z - FENCE_Z) * 0.72; // ≈ -16.5°
+const CAM_PITCH_MIN = -1.30, CAM_PITCH_MAX = 0.30;
+let camYaw = 0, camPitch = CAM_BASE_PITCH, camFov = 62;
 function updateAim(dt) {
   const w = WEAPONS[S.curW];
   const zl = S.zoomed ? (S.curW === 0 ? rifleZoom() : w.zoom) : 1;
-  const range = 0.65 / Math.sqrt(zl), rangeV = 0.36 / Math.sqrt(zl);
-  const ty = -S.aim.x * range, tp = -0.21 + S.aim.y * rangeV;
+  // Rango de puntería: se estrecha con el zoom pero conserva recorrido vertical suficiente
+  // para barrer desde el horizonte hasta el pie de la torre.
+  const range = 0.68 / Math.sqrt(zl), rangeV = 0.45 / Math.sqrt(zl);
+  const ty = -S.aim.x * range;
+  const tp = clamp(CAM_BASE_PITCH + S.aim.y * rangeV, CAM_PITCH_MIN, CAM_PITCH_MAX);
   const sp = Math.min(1, dt * 7 * S.settings.sens);
   camYaw += (ty - camYaw) * sp;
   camPitch += (tp - camPitch) * sp;
@@ -1506,3 +1531,14 @@ updateMenuBest();
 renderSlots();
 updateHUD();
 animate();
+
+// ---------------- gancho de depuración ----------------
+// Expone el estado real del juego para la consola del navegador y los tests automáticos.
+// No afecta al funcionamiento: es solo una referencia de lectura.
+if (typeof window !== 'undefined') {
+  window.__FRTD__ = {
+    S, camera, scene, world, ent, fx, WEAPONS,
+    SNIPER_EYE, PARAPET_TOP, CAM_BASE_PITCH, FENCE_Z,
+    setZoom, startGame, startWave, updateAim, rayHit, tryFire, deployTurret, switchWeapon,
+  };
+}

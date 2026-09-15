@@ -177,6 +177,26 @@ canvas{display:block;touch-action:none}
 }
 .scope-hud-readout span b{color:#fff}
 
+/* Botón para SALIR de la mira telescópica (siempre visible/clicable con la mira puesta) */
+#btnScopeExit{
+  position:absolute;bottom:5%;left:50%;transform:translateX(-50%);
+  pointer-events:auto;cursor:pointer;z-index:9;
+  display:flex;align-items:center;gap:8px;
+  background:rgba(9,22,29,.94);border:1.5px solid var(--cyan);color:var(--cyan);
+  font:700 12px 'JetBrains Mono';letter-spacing:.14em;
+  padding:11px 20px;border-radius:3px;
+  box-shadow:0 0 16px rgba(124,248,255,.28),0 6px 18px rgba(0,0,0,.6);
+  touch-action:none;user-select:none;-webkit-user-select:none;
+  transition:transform .08s,background .12s,color .12s;
+}
+#btnScopeExit:hover{background:rgba(18,48,60,.96)}
+#btnScopeExit:active{transform:translateX(-50%) scale(.94);background:var(--cyan);color:#071017}
+#btnScopeExit small{opacity:.65;font-size:10px;letter-spacing:.08em}
+@media (max-width:820px),(pointer:coarse){
+  #btnScopeExit{bottom:3%;padding:13px 22px;font-size:13px}
+  #btnScopeExit small{display:none}
+}
+
 /* ===== TOASTS, RADIO, POPUPS ===== */
 .toast{
   position:absolute;left:50%;top:20%;transform:translate(-50%,-50%);
@@ -432,6 +452,10 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
       <span id="scopeMag">ZOOM: <b>4.5×</b></span>
     </div>
   </div>
+  <!-- Salida de la mira: siempre accesible mientras se está apuntando -->
+  <button id="btnScopeExit" type="button" aria-label="Quitar la mira telescópica">
+    <span aria-hidden="true">✕</span> QUITAR MIRA <small>ESC / CLICK DER.</small>
+  </button>
 </div>
 
 <!-- HUD DE JUEGO MINIMALISTA -->
@@ -470,8 +494,8 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
     <div id="streak"></div>
   </div>
 
-  <!-- Retícula de cadera / Hitmarker -->
-  <div id="crosshair"><div class="ring"></div><i class="ch t"></i><i class="ch b"></i><i class="ch l"></i><i class="ch r"></i><i class="dot"></i></div>
+  <!-- Retícula de cadera / Hitmarker (la de cadera se oculta con la mira telescópica puesta) -->
+  <div id="crosshair" class="hud-hide-scoped"><div class="ring"></div><i class="ch t"></i><i class="ch b"></i><i class="ch l"></i><i class="ch r"></i><i class="dot"></i></div>
   <div id="hitmarker"></div>
 
   <!-- Notificaciones y Radio -->
@@ -545,7 +569,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
       <button class="start ghost" id="btnHelp">CONTROLES</button>
     </div>
     <div class="menuBest" id="menuBest">RÉCORD LOCAL: 0 PTS</div>
-    <div class="controls"><b>PC:</b> Ratón apunta · Click dispara · RMB/Espacio zoom telescópico · <b>E</b> torreta autónoma (hasta 4) · <b>R</b> recarga · <b>F</b> repara · <b>B</b> mejoras<br><b>Android:</b> Arrastra para apuntar · Botón MIRA con zoom y desenfoque · Botón FUEGO · Botón TORRETA</div>
+    <div class="controls"><b>PC:</b> Ratón apunta · Click dispara · RMB/Espacio zoom telescópico · ESC / botón QUITAR MIRA para salir · <b>E</b> torreta autónoma (hasta 4) · <b>R</b> recarga · <b>F</b> repara · <b>B</b> mejoras<br><b>Android:</b> Arrastra para apuntar · Botón MIRA con zoom y desenfoque · Botón QUITAR MIRA para salir · Botón FUEGO · Botón TORRETA</div>
   </div>
 </div>
 

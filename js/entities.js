@@ -473,8 +473,13 @@ export class Entities {
         if (k >= 1) { z.state = 'invade'; g.position.y = 0; g.rotation.x = 0; }
       } else if (z.state === 'invade') {
         const pp = ctx.playerPos;
-        const dx = pp.x - g.position.x, dz = (pp.z - 3) - g.position.z;
+        // El francotirador está en lo alto de la torre: los infectados no pueden subir,
+        // se amontonan al pie de los pilares. Ese punto (~16 m por delante de la cámara)
+        // queda dentro del campo de visión al bajar la vista, así se les puede disparar.
+        const dzAssault = (pp.z - 13) - g.position.z;
+        const dx = pp.x - g.position.x, dz = dzAssault;
         const d = Math.hypot(dx, dz);
+        if (!z.siegeWarned) { z.siegeWarned = true; H.towerSiege && H.towerSiege(z); }
         if (prey) {
           g.position.x += Math.sign(prey.g.position.x - g.position.x) * dt * z.speed * slowed;
           g.position.z += Math.sign(prey.g.position.z - g.position.z) * dt * z.speed * slowed;
@@ -485,7 +490,7 @@ export class Entities {
             this.scene.remove(prey.g);
             H.civDown && H.civDown(prey);
           }
-        } else if (d > 5.5) {
+        } else if (d > 3) {
           g.position.x += (dx / d) * dt * z.speed * slowed;
           g.position.z += (dz / d) * dt * z.speed * slowed;
           g.position.y = Math.abs(Math.sin(t * 3.2 + z.phase)) * 0.18;

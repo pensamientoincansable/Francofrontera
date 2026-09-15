@@ -25,6 +25,15 @@ function dayFrame(dayT) {
   return { a, b, f: 0 };
 }
 
+// ---------- GEOMETRÍA DEL NIDO DE FRANCOTIRADOR ----------
+// Fuente única de verdad: la cámara (game.js) y la torre (buildTower) usan estos valores.
+// SNIPER_EYE   → ojo del tirador, de pie tras el parapeto.
+// PARAPET_TOP  → coronación de los sacos de arena (queda ~0.81 m bajo el ojo).
+// PARAPET_Z    → cara exterior del parapeto.
+export const SNIPER_EYE = Object.freeze({ x: 0, y: 13.95, z: 32.0 });
+export const PARAPET_TOP = 13.14;
+export const PARAPET_Z = 31.05;
+
 export class World {
   constructor(scene, camera, renderer) {
     this.scene = scene; this.camera = camera; this.renderer = renderer;
@@ -195,9 +204,12 @@ export class World {
       this.scene.add(b);
     });
 
-    // ========== GRAN TORRE / NIDO ELEVADO DEL FRANCOTIRADOR (x=0, z=34, y=13.5) ==========
+    // ========== GRAN TORRE / NIDO ELEVADO DEL FRANCOTIRADOR ==========
+    // (grupo en x=0, z=34 · ojo del tirador SNIPER_EYE = y 13.95, z 32.0 en game.js)
     const tower = new THREE.Group();
+    tower.name = 'sniperTower';
     tower.position.set(0, 0, 34);
+    this.tower = tower;
 
     // 4 pilares estructurales de acero desde el suelo hasta la plataforma
     const pillarCoords = [[-3.4, -2.6], [3.4, -2.6], [-3.4, 2.6], [3.4, 2.6]];
@@ -223,23 +235,27 @@ export class World {
       bRight.position.set(3.4, yLevel, 0); tower.add(bRight);
     }
 
-    // Suelo de la plataforma del francotirador a y = 12.15
+    // Suelo de la plataforma del francotirador a y = 12.15 (superior en 12.325)
     const deck = new THREE.Mesh(new THREE.BoxGeometry(7.6, 0.35, 6.4), metalMat);
     deck.position.set(0, 12.15, 0);
     deck.receiveShadow = true;
     tower.add(deck);
 
-    // Parapeto balístico frontal con sacos de arena (apoyo de francotirador)
-    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(7.4, 0.95, 0.4), darkWood);
-    frontWall.position.set(0, 12.75, -2.8);
+    // ---- PARAPETO BAJO DE TIRO (apoyo del francotirador) ----
+    // Geometría calculada para que el ojo del tirador (SNIPER_EYE) quede ~0.8 m POR
+    // ENCIMA de la coronación: así el muro solo entra en cuadro en la franja inferior
+    // (y al bajar la vista), sin tapar nunca la valla ni a los zombis.
+    const wallH = PARAPET_TOP - 0.44 - 12.325;          // muro de madera bajo los sacos
+    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(7.4, wallH, 0.45), darkWood);
+    frontWall.position.set(0, 12.325 + wallH / 2, PARAPET_Z - 34);
     frontWall.castShadow = true;
     tower.add(frontWall);
 
-    // Hilera de sacos de arena en el frontal del nido
+    // Hilera de sacos de arena en el frontal del nido (apoyo para el cañón)
     for (let i = 0; i < 9; i++) {
       const bag = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.55, 3, 6), sandMat);
       bag.rotation.z = Math.PI / 2;
-      bag.position.set(-3.0 + i * 0.75, 13.25, -2.8);
+      bag.position.set(-3.0 + i * 0.75, PARAPET_TOP - 0.24, PARAPET_Z - 34);
       bag.castShadow = true;
       tower.add(bag);
     }

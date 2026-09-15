@@ -22,6 +22,7 @@ Abre `http://localhost:8000`.
 | **Ratón** | Apuntar suavemente desde la torre elevada |
 | **Click izq.** | Disparar arma actual |
 | **Click der. / Espacio** | Activar mira telescópica (zoom con desenfoque periférico) |
+| **ESC / Botón QUITAR MIRA** | Salir de la mira telescópica |
 | **E / C** | **Desplegar ametralladora autónoma (hasta 4 en el perímetro)** |
 | **1 / 2 / 3 / 4** | Seleccionar arma (Rifle · Pistola · Lanzagranadas · Misiles) |
 | **Rueda** | Cambiar de arma |
@@ -45,8 +46,10 @@ Abre `http://localhost:8000`.
 ## Novedades y Características Principales
 
 ### 1. Nido de Francotirador Elevado a Gran Distancia
-- Posición reubicada en la plataforma superior de una torre de observación militar a 13.5 metros de altura y 35 metros de distancia de la valla.
+- Ojo del tirador a ~14 m de altura, de pie tras el parapeto bajo de la torre de observación, a ~33 m de la valla.
+- Encuadre inclinado hacia abajo: la valla y todo el campo de tiro quedan siempre en cuadro; el parapeto solo asoma en la franja inferior y se ve una parte del muro únicamente al mirar muy hacia abajo (para disparar apoyado en los sacos).
 - Ángulo de tiro descendente realista sobre el sector costero, permitiendo avistar a los zombis desde su emergencia en la playa hasta la línea defensiva.
+- Los infectados que superan la valla se amontonan al pie de la torre, dentro del campo de visión, y se avisa por radio para mirar hacia abajo.
 - Registro de impacto y headshots optimizado para la perspectiva elevada.
 
 ### 2. Hasta 4 Ametralladoras Autónomas (Torretas Sentry)
@@ -64,6 +67,7 @@ Abre `http://localhost:8000`.
 - Zoom telescópico de alta precisión (4.5× base, ampliable a 6.5× y 9.0× mediante mejoras).
 - Efecto óptico de desenfoque periférico mediante filtro de lente que difumina y oscurece el entorno exterior a la retícula, minimizando distracciones y consumo de recursos.
 - Retícula táctica mil-dot con punto central rojo de precisión, telemetría de distancia en tiempo real (`RNG: XX M`) e identificación de blanco (`BLANCO: [TIPO]`).
+- Botón **✕ QUITAR MIRA** siempre visible dentro de la propia mira para salir sin soltar el ratón o el dedo (también con ESC o soltando click der.).
 
 ### 5. Interfaz Minimalista Durante el Gameplay
 - HUD rediseñado con líneas limpias y estilizadas: barra superior delgada, pastillas tácticas compactas y paneles transparentes.
