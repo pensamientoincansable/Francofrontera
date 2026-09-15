@@ -472,7 +472,7 @@ export class World {
     this.weapons3d[3] = this.buildMissiles();
     for (let i = 1; i < 4; i++) { this.weapons3d[i].visible = false; this.vm.add(this.weapons3d[i]); }
   }
-  gunMetal(c, m, r) { return new THREE.MeshStandardMaterial({ color: c, metalness: m ?? 0.75, roughness: r ?? 0.35 }); }
+  gunMetal(c, m, r) { return new THREE.MeshStandardMaterial({ color: c, metalness: (m !== undefined && m !== null) ? m : 0.75, roughness: (r !== undefined && r !== null) ? r : 0.35 }); }
   loadMauser() {
     const loader = new GLTFLoader();
     loader.load('resources/gltf-Sniper/Mauser_98K.gltf', (gltf) => {
@@ -581,17 +581,31 @@ export class World {
   }
   setWeapon(i) {
     this.curW = i;
-    for (let k = 0; k < 4; k++) if (this.weapons3d[k]) this.weapons3d[k].visible = (k === i);
-    if (this.weapons3d[0] === null) this.fallbackRifle.visible = false;
-    this.kick = Math.max(this.kick, 0.35); // tirón al cambiar
+    // Ocultar todas las armas primero
+    for (let k = 0; k < 4; k++) {
+      if (this.weapons3d[k]) this.weapons3d[k].visible = (k === i);
+    }
+    // Lógica robusta para el rifle: si aún no ha cargado el GLTF, usar fallback
+    if (this.weapons3d[0] === null) {
+      if (this.fallbackRifle) this.fallbackRifle.visible = (i === 0);
+    } else {
+      // Si ya hay modelo GLTF, asegurar que fallback esté oculto
+      if (this.fallbackRifle && this.weapons3d[0] !== this.fallbackRifle) {
+        this.fallbackRifle.visible = false;
+      }
+    }
+    this.kick = Math.max(this.kick, 0.35);
     this.swapT = 0.35;
   }
   setZoomed(z) { this.zoomTarget = z ? 1 : 0; }
   addKick(s) { this.kick = Math.min(1.4, this.kick + s); }
   reloadDip() { this.reloadDipT = 0.6; }
   muzzleWorld(out) {
-    const mz = this.muzzles[this.curW];
-    if (mz) return mz.getWorldPosition(out);
+    try{
+      const idx = Math.max(0, Math.min(3, this.curW|0));
+      const mz = this.muzzles[idx];
+      if (mz) return mz.getWorldPosition(out);
+    }catch(e){}
     return out.copy(this.camera.position);
   }
   updateViewmodel(dt, t, firing) {
