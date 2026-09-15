@@ -621,10 +621,90 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
 
 <div id="errbox"></div>
 <script>
-window.addEventListener('error',e=>{const b=document.getElementById('errbox');b.style.display='block';b.textContent+='⚠ '+(e.message||e.error)+'\n';});
-window.addEventListener('unhandledrejection',e=>{const b=document.getElementById('errbox');b.style.display='block';b.textContent+='⚠ '+(e.reason&&e.reason.message||e.reason)+'\n';});
+// === Gestor robusto de errores y tokens corruptos ===
+(function(){
+  const box = document.getElementById('errbox');
+  function show(msg){
+    if(!box) return;
+    box.style.display='block';
+    box.textContent += '⚠ ' + msg + '\n';
+    // Si el error parece de tokens/localStorage, ofrecer limpieza
+    if(/token|localStorage|frtd_|JSON|Unexpected/i.test(msg)){
+      if(!document.getElementById('btnClearTokens')){
+        const btn = document.createElement('button');
+        btn.id='btnClearTokens';
+        btn.textContent='LIMPIAR TOKENS CORRUPTOS Y REINICIAR';
+        btn.style.cssText='margin-top:8px;background:#ff5470;color:#fff;border:0;padding:6px 10px;font:700 11px JetBrains Mono;cursor:pointer;pointer-events:auto;';
+        btn.onclick=()=>{
+          try{
+            localStorage.removeItem('frtd_best_v1');
+            localStorage.removeItem('frtd_set_v1');
+            localStorage.removeItem('frtd_save_v1');
+          }catch(e){}
+          location.reload();
+        };
+        box.appendChild(document.createElement('br'));
+        box.appendChild(btn);
+      }
+    }
+  }
+  window.addEventListener('error',e=>{
+    show((e.message||e.error||'Error desconocido') + (e.filename? ' @ '+e.filename+':'+e.lineno : ''));
+  });
+  window.addEventListener('unhandledrejection',e=>{
+    const r = e.reason;
+    show((r&&r.message||r||'Promesa rechazada'));
+  });
+  // Limpieza preventiva de tokens corruptos al iniciar
+  try{
+    ['frtd_best_v1','frtd_set_v1','frtd_save_v1'].forEach(k=>{
+      const v = localStorage.getItem(k);
+      if(v===null) return;
+      try{ JSON.parse(v); }catch(err){
+        console.warn('Token corrupto detectado:',k,v);
+        localStorage.removeItem(k);
+        show('Token corrupto limpiado: '+k);
+      }
+    });
+  }catch(e){
+    show('Almacenamiento no disponible: '+e.message);
+  }
+})();
 </script>
+<!-- es-module-shims para compatibilidad con importmap en todos los navegadores -->
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
 <script type="module" src="./js/game.js"></script>
+<script>
+// Fallback para iniciar el juego incluso si hay problemas con tokens de entrada táctil
+document.addEventListener('DOMContentLoaded', ()=>{
+  const btn = document.getElementById('btnStart');
+  if(btn){
+    // Asegurar que el botón responde a click y a touch
+    const handler = (e)=>{
+      if(e) { e.preventDefault(); e.stopPropagation(); }
+      // Disparar el click original si existe
+      if(btn._originalClick) btn._originalClick();
+    };
+    // Guardar handler original si lo pone game.js después, lo reenganchamos con MutationObserver
+    const tryBind = ()=>{
+      if(btn.onclick && !btn._originalClick){
+        btn._originalClick = btn.onclick;
+        btn.addEventListener('touchstart', handler, {passive:false});
+        btn.addEventListener('click', (ev)=>{
+          // Evitar doble disparo en dispositivos táctiles
+          if(ev.sourceCapabilities && ev.sourceCapabilities.firesTouchEvents) return;
+        });
+      }
+    };
+    // Intentar ahora y observar cambios
+    tryBind();
+    const obs = new MutationObserver(tryBind);
+    obs.observe(btn, {attributes:true});
+    setTimeout(tryBind, 500);
+    setTimeout(tryBind, 1500);
+  }
+});
+</script>
 </body>
 </html>

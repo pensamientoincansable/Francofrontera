@@ -896,23 +896,28 @@ function buyUpgrade(u) {
 
 // ---------------- flujo de juego ----------------
 function resetRun() {
-  ent.clearAll();
-  for (const p of projectiles) scene.remove(p.mesh);
+  try { ent.clearAll(); } catch(e){ console.warn('clearAll fallo', e); ent.list=[]; ent.civs=[]; ent.soldiers=[]; ent.turrets=[]; }
+  for (const p of projectiles) { try{ scene.remove(p.mesh); }catch(e){} }
   projectiles.length = 0;
+  // Reset completo de estado, incluyendo tokens de entrada y alertas
   Object.assign(S, {
     wave: 1, score: 0, kills: 0, headshots: 0, shots: 0, hits: 0,
     curW: 0, spec: 'normal', up: { dmg: 0, reload: 0, zoom: 0, mag: 0, fence: 0 },
-    fence: 100, fenceMax: 100, fenceAlive: true, hp: 100,
-    strikeCd: 0, strikeUnlocked: false, intermission: false,
-    dayT: 0.08, storm: 0, stormState: 'calm', stormT: rand(40, 70), lightning: 0,
-    killsTimes: [], streakBest: 0, objectives: [], pendingSpawns: [],
+    fence: 100, fenceMax: 100, fenceAlive: true, hp: 100, lastHurt: -99,
+    strikeCd: 0, strikeUnlocked: false, intermission: false, interT: 0,
+    dayT: 0.08, storm: 0, stormState: 'calm', stormT: rand(40, 70), lightning: 0, nextBolt: 0,
+    aim: { x: 0, y: 0 }, zoomed: false, firing: false, switchT: 0,
+    trauma: 0, time: 0,
+    killsTimes: [], streakBest: 0, explosiveKills: 0, headWave: 0, killsWave: 0, civsLostWave: 0,
+    objectives: [], pendingSpawns: [], spawnT: 0,
+    _lastTurretAlert: 0, _warn30: false,
   });
   S.specPool = { fire: 13, shock: 13 };
   S.wstate = WEAPONS.map(w => ({ ammo: w.mag, reloading: false, reloadT: 0, cd: 0 }));
   const rw = $('reloadWrap'), st = $('streak');
   if (rw) rw.style.display = 'none';
   if (st) st.textContent = '';
-  world.setWeapon(0);
+  try { world.setWeapon(0); } catch(e){ console.warn('setWeapon fallo', e); }
   const wn = $('weaponName'), wi = $('weaponIcon'), ch = $('crosshair');
   if (wn) wn.textContent = WEAPONS[0].name;
   if (wi) wi.textContent = WEAPONS[0].icon;
@@ -920,26 +925,40 @@ function resetRun() {
   setZoom(false);
 }
 function startGame(fresh) {
-  audio.init(); audio.resume();
-  resetRun();
-  if (!fresh) {
-    const sv = loadSave();
-    if (sv) {
-      S.wave = sv.wave || 1; S.score = sv.score || 0;
-      S.kills = sv.kills || 0; S.headshots = sv.headshots || 0; S.shots = sv.shots || 0;
-      Object.assign(S.up, sv.up || {});
-      S.fenceMax = 100 + S.up.fence * 25; S.fence = S.fenceMax;
-      if (S.wave >= 3) S.strikeUnlocked = true;
+  try{
+    try{ audio.init(); }catch(e){ console.warn('audio init fallo', e); }
+    try{ audio.resume(); }catch(e){}
+    resetRun();
+    if (!fresh) {
+      const sv = loadSave();
+      if (sv) {
+        S.wave = Math.max(1, sv.wave | 0) || 1; S.score = Math.max(0, sv.score | 0) || 0;
+        S.kills = sv.kills | 0; S.headshots = sv.headshots | 0; S.shots = sv.shots | 0;
+        if(sv.up && typeof sv.up === 'object') Object.assign(S.up, sv.up);
+        S.fenceMax = 100 + (S.up.fence|0) * 25; S.fence = S.fenceMax;
+        if (S.wave >= 3) S.strikeUnlocked = true;
+      }
     }
+    try{ ent.spawnSoldier(-7, 3, 'VEGA'); }catch(e){ console.warn('spawnSoldier fallo', e); }
+    S.screen = 'game'; S.playing = true; S.paused = false; S.shopOpen = false;
+    for (const id of ['menu', 'pauseMenu', 'over', 'settingsMenu', 'shopMenu', 'helpMenu']) {
+      const el = $(id);
+      if (el) el.classList.add('hidden');
+    }
+    radio('Aquí Puesto de Mando: posición elevada asegurada. Mantén la línea.', 'Posición de francotirador asegurada. Buena caza.');
+    startWave(S.wave);
+  }catch(e){
+    console.error('startGame error', e);
+    const eb = $('errbox');
+    if(eb){ eb.style.display='block'; eb.textContent += '⚠ startGame: '+(e.message||e)+'\n'; }
+    // Intentar limpiar tokens corruptos y reintentar una vez
+    try{
+      localStorage.removeItem('frtd_save_v1');
+      localStorage.removeItem('frtd_set_v1');
+      localStorage.removeItem('frtd_best_v1');
+    }catch(err){}
+    toast('ERROR AL INICIAR - TOKENS LIMPIADOS, REINTENTA');
   }
-  ent.spawnSoldier(-7, 3, 'VEGA');
-  S.screen = 'game'; S.playing = true; S.paused = false; S.shopOpen = false;
-  for (const id of ['menu', 'pauseMenu', 'over', 'settingsMenu', 'shopMenu', 'helpMenu']) {
-    const el = $(id);
-    if (el) el.classList.add('hidden');
-  }
-  radio('Aquí Puesto de Mando: posición elevada asegurada. Mantén la línea.', 'Posición de francotirador asegurada. Buena caza.');
-  startWave(S.wave);
 }
 function gameOver() {
   if (!S.playing) return;
@@ -1131,133 +1150,154 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { if (e.code === 'Space') setZoom(false); });
 
-// Controles táctiles adaptativos para Android
+// Controles táctiles adaptativos para Android - gestión robusta de tokens táctiles
 let touchStartX = 0, touchStartY = 0, isTouchAiming = false;
+let activeTouchId = null; // token del dedo que controla la puntería
 const aimPad = $('touchAimPad');
 if (aimPad) {
   aimPad.addEventListener('touchstart', e => {
     e.preventDefault();
-    const t = e.touches[0];
+    // Si ya hay un token activo, ignorar nuevos dedos para no perder el control
+    if(activeTouchId !== null) return;
+    const t = e.changedTouches[0];
+    if(!t) return;
+    activeTouchId = t.identifier;
     touchStartX = t.clientX; touchStartY = t.clientY;
     isTouchAiming = true;
   }, { passive: false });
 
   aimPad.addEventListener('touchmove', e => {
     e.preventDefault();
-    if (!isTouchAiming) return;
-    const t = e.touches[0];
-    const dx = t.clientX - touchStartX;
-    const dy = t.clientY - touchStartY;
-    touchStartX = t.clientX; touchStartY = t.clientY;
+    if (!isTouchAiming || activeTouchId === null) return;
+    // Buscar el touch con el token activo
+    let found = null;
+    for(let i=0;i<e.touches.length;i++){
+      if(e.touches[i].identifier === activeTouchId){ found = e.touches[i]; break; }
+    }
+    if(!found) return;
+    const dx = found.clientX - touchStartX;
+    const dy = found.clientY - touchStartY;
+    touchStartX = found.clientX; touchStartY = found.clientY;
     const sensFactor = (S.zoomed ? 0.0016 : 0.0032) * S.settings.sens;
     S.aim.x = clamp(S.aim.x - dx * sensFactor * 2.2, -1, 1);
     S.aim.y = clamp(S.aim.y - dy * sensFactor * 2.2, -1, 1);
   }, { passive: false });
 
-  aimPad.addEventListener('touchend', () => { isTouchAiming = false; }, { passive: true });
-  aimPad.addEventListener('touchcancel', () => { isTouchAiming = false; }, { passive: true });
+  const endTouch = (e)=>{
+    if(activeTouchId===null) { isTouchAiming=false; return; }
+    for(let i=0;i<e.changedTouches.length;i++){
+      if(e.changedTouches[i].identifier === activeTouchId){
+        activeTouchId = null;
+        isTouchAiming = false;
+        break;
+      }
+    }
+  };
+  aimPad.addEventListener('touchend', endTouch, { passive: true });
+  aimPad.addEventListener('touchcancel', endTouch, { passive: true });
 }
 
-// Botones táctiles específicos
-const btnTFire = $('btnTouchFire');
-if (btnTFire) {
-  btnTFire.addEventListener('touchstart', e => {
+// Botones táctiles específicos - manejo robusto de tokens táctiles y fallback a click
+function bindTouchBtn(id, fn, opts){
+  const el = $(id);
+  if(!el) return;
+  opts = opts || {};
+  let touchActive = false;
+  el.addEventListener('touchstart', e=>{
     e.preventDefault();
-    S.firing = true;
-    tryFire();
-  }, { passive: false });
-  btnTFire.addEventListener('touchend', e => {
-    e.preventDefault();
-    S.firing = false;
-  }, { passive: false });
+    touchActive = true;
+    try{ fn(e); }catch(err){ console.warn(id, err); }
+    // Evitar que el click fantasma dispare dos veces
+    setTimeout(()=>{ touchActive=false; }, 400);
+  }, {passive:false});
+  if(opts.end !== false){
+    el.addEventListener('touchend', e=>{ e.preventDefault(); if(opts.onEnd) opts.onEnd(e); }, {passive:false});
+  }
+  el.addEventListener('click', e=>{
+    if(touchActive) { e.preventDefault(); return; }
+    try{ fn(e); }catch(err){ console.warn(id, err); }
+  });
 }
 
-const btnTScope = $('btnTouchScope');
-if (btnTScope) {
-  btnTScope.addEventListener('touchstart', e => {
-    e.preventDefault();
-    setZoom(!S.zoomed);
-  }, { passive: false });
-}
+bindTouchBtn('btnTouchFire', ()=>{ S.firing=true; tryFire(); }, {
+  onEnd: ()=>{ S.firing=false; }
+});
+// Sobrescribir el comportamiento de fin de fuego para que siempre pare
+(function(){
+  const el = $('btnTouchFire');
+  if(el){
+    el.addEventListener('touchend', e=>{ e.preventDefault(); S.firing=false; }, {passive:false});
+    el.addEventListener('touchcancel', e=>{ S.firing=false; }, {passive:true});
+  }
+})();
 
-const btnTReload = $('btnTouchReload');
-if (btnTReload) {
-  btnTReload.addEventListener('touchstart', e => {
-    e.preventDefault();
-    startReload(S.curW);
-  }, { passive: false });
-}
-
-const btnTTurret = $('btnTouchTurret');
-if (btnTTurret) {
-  btnTTurret.addEventListener('touchstart', e => {
-    e.preventDefault();
-    deployTurret();
-  }, { passive: false });
-}
-
-const btnTRepair = $('btnTouchRepair');
-if (btnTRepair) {
-  btnTRepair.addEventListener('touchstart', e => {
-    e.preventDefault();
-    repairFence();
-  }, { passive: false });
-}
-
-const btnTStrike = $('btnTouchStrike');
-if (btnTStrike) {
-  btnTStrike.addEventListener('touchstart', e => {
-    e.preventDefault();
-    callStrike();
-  }, { passive: false });
-}
-
-const btnTAmmo = $('btnTouchAmmo');
-if (btnTAmmo) {
-  btnTAmmo.addEventListener('touchstart', e => {
-    e.preventDefault();
-    cycleSpec();
-  }, { passive: false });
-}
+bindTouchBtn('btnTouchScope', ()=> setZoom(!S.zoomed));
+bindTouchBtn('btnTouchReload', ()=> startReload(S.curW));
+bindTouchBtn('btnTouchTurret', ()=> deployTurret());
+bindTouchBtn('btnTouchRepair', ()=> repairFence());
+bindTouchBtn('btnTouchStrike', ()=> callStrike());
+bindTouchBtn('btnTouchAmmo', ()=> cycleSpec());
 
 // Pantalla completa (Android / Móvil)
 const btnFs = $('btnFullscreen');
 if (btnFs) {
-  btnFs.onclick = () => {
+  const fsFn = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
     } else {
       document.exitFullscreen().catch(() => {});
     }
   };
+  btnFs.onclick = fsFn;
+  btnFs.addEventListener('touchstart', e=>{ e.preventDefault(); fsFn(); }, {passive:false});
 }
 
-// Botones estándar
-$('btnStart').onclick = () => { audio.init(); audio.click(); startGame(true); };
-$('btnContinue').onclick = () => { audio.init(); audio.click(); startGame(false); };
-$('btnRetry').onclick = () => { audio.click(); startGame(true); };
-$('btnMenu').onclick = () => { audio.click(); toMenu(); };
-$('btnResume').onclick = () => { audio.click(); resumeGame(); };
-$('btnSaveExit').onclick = () => { saveGame(); audio.click(); toMenu(); };
-$('btnSettings').onclick = () => { audio.init(); audio.click(); openSettings('menu'); };
-$('btnSettings2').onclick = () => { audio.click(); openSettings('pause'); };
-$('btnCloseSettings').onclick = () => { audio.click(); closeSettings(); };
-$('btnHelp').onclick = () => { audio.init(); audio.click(); $('helpMenu').classList.remove('hidden'); };
-$('btnCloseHelp').onclick = () => { audio.click(); $('helpMenu').classList.add('hidden'); };
-$('btnShop').onclick = () => { audio.click(); openShop(); };
-const bst = $('btnShopTop'); if (bst) bst.onclick = () => { audio.click(); openShop(); };
-$('btnShop2').onclick = () => { audio.click(); $('pauseMenu').classList.add('hidden'); openShop(); };
-$('btnCloseShop').onclick = () => { audio.click(); closeShop(); };
-$('btnTurret').onclick = () => deployTurret();
-$('btnRepair').onclick = () => repairFence();
-$('btnStrike').onclick = () => callStrike();
-$('btnNextWave').onclick = () => { audio.click(); if (S.intermission) startWave(S.wave + 1); };
-$('btnPause').onclick = () => { S.paused ? resumeGame() : pauseGame(); };
-$('btnMute').onclick = () => {
-  audio.init();
-  audio.setMuted(!audio.muted);
-  $('btnMute').textContent = audio.muted ? '✕' : '♪';
-};
+// Helper para botones estándar con soporte táctil robusto (evita bloqueo por tokens táctiles)
+function bindBtn(id, fn){
+  const el = $(id);
+  if(!el) { console.warn('Botón no encontrado:', id); return; }
+  let touched = false;
+  el.addEventListener('touchstart', e=>{
+    e.preventDefault();
+    touched = true;
+    try{ fn(e); }catch(err){ console.error(id, err); }
+    setTimeout(()=> touched=false, 500);
+  }, {passive:false});
+  el.addEventListener('click', e=>{
+    if(touched) return;
+    try{ fn(e); }catch(err){ console.error(id, err); }
+  });
+  // Guardar referencia para fallback de index.html
+  el._originalClick = fn;
+}
+
+bindBtn('btnStart', () => { try{ audio.init(); audio.click(); }catch(e){} startGame(true); });
+bindBtn('btnContinue', () => { try{ audio.init(); audio.click(); }catch(e){} startGame(false); });
+bindBtn('btnRetry', () => { try{ audio.click(); }catch(e){} startGame(true); });
+bindBtn('btnMenu', () => { try{ audio.click(); }catch(e){} toMenu(); });
+bindBtn('btnResume', () => { try{ audio.click(); }catch(e){} resumeGame(); });
+bindBtn('btnSaveExit', () => { saveGame(); try{ audio.click(); }catch(e){} toMenu(); });
+bindBtn('btnSettings', () => { try{ audio.init(); audio.click(); }catch(e){} openSettings('menu'); });
+bindBtn('btnSettings2', () => { try{ audio.click(); }catch(e){} openSettings('pause'); });
+bindBtn('btnCloseSettings', () => { try{ audio.click(); }catch(e){} closeSettings(); });
+bindBtn('btnHelp', () => { try{ audio.init(); audio.click(); }catch(e){} const hm=$('helpMenu'); if(hm) hm.classList.remove('hidden'); });
+bindBtn('btnCloseHelp', () => { try{ audio.click(); }catch(e){} const hm=$('helpMenu'); if(hm) hm.classList.add('hidden'); });
+bindBtn('btnShop', () => { try{ audio.click(); }catch(e){} openShop(); });
+bindBtn('btnShopTop', () => { try{ audio.click(); }catch(e){} openShop(); });
+bindBtn('btnShop2', () => { try{ audio.click(); }catch(e){} const pm=$('pauseMenu'); if(pm) pm.classList.add('hidden'); openShop(); });
+bindBtn('btnCloseShop', () => { try{ audio.click(); }catch(e){} closeShop(); });
+bindBtn('btnTurret', () => deployTurret());
+bindBtn('btnRepair', () => repairFence());
+bindBtn('btnStrike', () => callStrike());
+bindBtn('btnNextWave', () => { try{ audio.click(); }catch(e){} if (S.intermission) startWave(S.wave + 1); });
+bindBtn('btnPause', () => { S.paused ? resumeGame() : pauseGame(); });
+bindBtn('btnMute', () => {
+  try{ audio.init(); }catch(e){}
+  try{
+    audio.setMuted(!audio.muted);
+    const bm=$('btnMute'); if(bm) bm.textContent = audio.muted ? '✕' : '♪';
+  }catch(e){}
+});
 
 // Sliders
 $('setSens').oninput = e => { S.settings.sens = e.target.value / 100; $('sensVal').textContent = S.settings.sens.toFixed(1); saveSettings(); };

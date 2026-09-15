@@ -19,7 +19,7 @@ class PointPool {
     g.setAttribute('position', this.posAttr);
     g.setAttribute('color', this.colAttr);
     this.mat = new THREE.PointsMaterial({
-      size, vertexColors: true, transparent: true, opacity: opacity ?? 1,
+      size, vertexColors: true, transparent: true, opacity: (opacity !== undefined && opacity !== null) ? opacity : 1,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
       depthWrite: false, sizeAttenuation: true
     });
@@ -35,7 +35,7 @@ class PointPool {
     this.vel[k*3] = vx; this.vel[k*3+1] = vy; this.vel[k*3+2] = vz;
     this.life[k] = life; this.life0[k] = life;
     this.baseCol[k*3] = r; this.baseCol[k*3+1] = g; this.baseCol[k*3+2] = b;
-    this.grav[k] = grav ?? 9; this.drag[k] = drag ?? 1;
+    this.grav[k] = (grav !== undefined && grav !== null) ? grav : 9; this.drag[k] = (drag !== undefined && drag !== null) ? drag : 1;
   }
   burst(p, n, opt) {
     for (let i = 0; i < n; i++) {
@@ -44,10 +44,10 @@ class PointPool {
       const c = opt.colors[(Math.random() * opt.colors.length) | 0];
       this.spawn(p.x, p.y, p.z,
         Math.sin(ph) * Math.cos(th) * sp + (opt.vx || 0),
-        Math.abs(Math.cos(ph)) * sp * (opt.up ?? 0.9) + (opt.vy || 0),
+        Math.abs(Math.cos(ph)) * sp * ((opt.up !== undefined && opt.up !== null) ? opt.up : 0.9) + (opt.vy || 0),
         Math.sin(ph) * Math.sin(th) * sp + (opt.vz || 0),
         (opt.life || 0.8) * (0.5 + Math.random()),
-        c[0], c[1], c[2], opt.grav ?? 9, opt.drag ?? 1.2);
+        c[0], c[1], c[2], (opt.grav !== undefined && opt.grav !== null) ? opt.grav : 9, (opt.drag !== undefined && opt.drag !== null) ? opt.drag : 1.2);
     }
   }
   update(dt) {
