@@ -89,6 +89,10 @@ export class AudioEngine {
     } else if (kind === 'ally') {
       this.noise(t, 0.1, 0.25, 'highpass', 1600);
       this.osc('sine', 260, 80, t, 0.1, 0.3);
+    } else if (kind === 'turret') {
+      this.noise(t, 0.08, 0.4, 'bandpass', 1900, 2.5);
+      this.osc('square', 340, 90, t, 0.07, 0.28);
+      this.osc('sine', 150, 48, t, 0.1, 0.4);
     }
   }
   dryFire() { if (!this.ctx) return; const t = this.now(); this.osc('square', 1800, 1200, t, 0.04, 0.15); }
@@ -127,6 +131,21 @@ export class AudioEngine {
   buy() {
     if (!this.ctx) return; const t = this.now();
     [660, 880, 1320].forEach((f, i) => this.osc('triangle', f, f, t + i * 0.08, 0.18, 0.3));
+  }
+  turretDeploy() {
+    if (!this.ctx) return; const t = this.now();
+    this.osc('triangle', 180, 440, t, 0.18, 0.3);
+    this.noise(t + 0.08, 0.16, 0.35, 'bandpass', 1200, 2);
+    this.osc('sine', 480, 640, t + 0.2, 0.12, 0.2);
+  }
+  scopeIn() {
+    if (!this.ctx) return; const t = this.now();
+    this.osc('sine', 550, 1050, t, 0.05, 0.14);
+    this.noise(t, 0.04, 0.16, 'highpass', 2400);
+  }
+  scopeOut() {
+    if (!this.ctx) return; const t = this.now();
+    this.osc('sine', 950, 480, t, 0.05, 0.12);
   }
   denied() { if (!this.ctx) return; const t = this.now(); this.osc('square', 220, 140, t, 0.18, 0.25); }
   click() { if (!this.ctx) return; const t = this.now(); this.osc('triangle', 900, 700, t, 0.05, 0.2); }

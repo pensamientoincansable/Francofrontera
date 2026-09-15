@@ -1,70 +1,82 @@
 # FRONTERA // Dead Tide — Edición Completa
 
-Shooter de francotirador 3D ambientado en una frontera costera asediada por zombis. Defiende la valla, protege a los civiles y sobrevive a oleadas cada vez más duras.
+Shooter táctico de francotirador 3D ambientado en una torre de vigilancia fronteriza asediada por zombis. Defiende la valla a larga distancia, despliega ametralladoras autónomas, protege a los civiles y sobrevive a oleadas cada vez más intensas.
 
 ## Ejecutar
 
 El juego es estático y usa Three.js desde CDN. Desde la raíz del proyecto:
 
 ```bash
-python3 -m http.server 4173 --bind 0.0.0.0
+python3 -m http.server 8000 --bind 0.0.0.0
 ```
 
-Abre `http://localhost:4173`.
+Abre `http://localhost:8000`.
 
 > **Nota:** el rifle Mauser 3D (`resources/gltf-Sniper/`) se carga por HTTP, así que hay que servir el proyecto (no funciona con `file://`).
 
-## Controles
+## Controles Adaptativos
 
-| Tecla | Acción |
+### PC (Teclado y Ratón)
+| Tecla / Acción | Función |
 |---|---|
-| Ratón | Mover puntería (torreta fija) |
-| Click izq. | Disparar |
-| Click der. / Espacio | Mantener: zoom de precisión |
-| 1 / 2 / 3 / 4 | Rifle · Pistola · Lanzagranadas · Misiles guiados |
-| Rueda | Cambiar de arma |
-| Q | Munición: normal → incendiaria → eléctrica |
-| R | Recargar |
-| F | Reparar valla (120 pts) |
-| B | Tienda de mejoras |
-| T | Ataque aéreo (desde oleada 3) |
-| Enter | Desplegar siguiente oleada |
-| P / Esc | Pausa |
-| M | Silenciar |
+| **Ratón** | Apuntar suavemente desde la torre elevada |
+| **Click izq.** | Disparar arma actual |
+| **Click der. / Espacio** | Activar mira telescópica (zoom con desenfoque periférico) |
+| **E / C** | **Desplegar ametralladora autónoma (hasta 4 en el perímetro)** |
+| **1 / 2 / 3 / 4** | Seleccionar arma (Rifle · Pistola · Lanzagranadas · Misiles) |
+| **Rueda** | Cambiar de arma |
+| **Q** | Alternar munición especial (Normal → Incendiaria → Eléctrica) |
+| **R** | Recargar arma |
+| **F** | Reparar valla fronteriza (120 pts) |
+| **T** | Solicitar ataque aéreo de helicóptero (Oleada 3+) |
+| **B** | Arsenal / Tienda de mejoras de campo |
+| **Enter** | Desplegar siguiente oleada (durante intermisión) |
+| **P / Esc** | Pausa |
+| **M** | Silenciar audio |
 
-## Contenido
+### Android / Pantallas Táctiles
+- **Superficie de arrastre (lado izquierdo/centro):** Control suave de orientación y puntería sin disparos accidentales.
+- **Botón FUEGO:** Botón circular prominente para disparar con el pulgar derecho (soporta ráfaga mantenida).
+- **Botón MIRA:** Alterna la mira telescópica con zoom óptico y desenfoque periférico.
+- **Botón TORRETA:** Coloca ametralladoras autónomas en las posiciones clave del perímetro defensivo.
+- **Botones de acción táctiles:** Recarga rápida, reparación de valla, ataque aéreo y cambio de munición.
+- **Botón Pantalla Completa (⛶):** Oculta barras de navegación para máxima inmersión táctil.
 
-**Progresión**
-- 5 tipos de zombis: infectados, corredores, blindados, volátiles explosivos y trepadores.
-- Jefe de oleada cada 5 oleadas, con barra de vida e invocación de refuerzos.
-- Tienda de mejoras: daño, recarga, zoom (3×/4.5×/6.5×), cargadores y blindaje de valla.
+## Novedades y Características Principales
 
-**Arsenal**
-- Rifle de cerrojo Mauser 98K (modelo GLTF del repositorio), pistola secundaria, lanzagranadas en arco y salva de 4 misiles guiados.
-- Munición especial incendiaria (daño en el tiempo) y eléctrica (arco en cadena + ralentiza).
+### 1. Nido de Francotirador Elevado a Gran Distancia
+- Posición reubicada en la plataforma superior de una torre de observación militar a 13.5 metros de altura y 35 metros de distancia de la valla.
+- Ángulo de tiro descendente realista sobre el sector costero, permitiendo avistar a los zombis desde su emergencia en la playa hasta la línea defensiva.
+- Registro de impacto y headshots optimizado para la perspectiva elevada.
 
-**Visual**
-- Ciclo de día y noche, tormentas con lluvia, oleaje dinámico y rayos.
-- Explosiones por capas con onda de choque, sangre, humo y valla que se derrumba por segmentos.
-- Helicóptero 3D en patrulla con rotor audible, luces de navegación y foco nocturno; ejecuta el ataque aéreo.
+### 2. Hasta 4 Ametralladoras Autónomas (Torretas Sentry)
+- Capacidad para desplegar hasta 4 ametralladoras autónomas pesadas a lo largo del perímetro defensivo (Flanco Izquierdo, Centro-Izquierda, Centro-Derecha, Flanco Derecho).
+- IA de adquisición de objetivos: rastreo de zombis a 48 metros, sensor láser (escaneo en verde, bloqueo en rojo), ráfagas automáticas de doble cañón con retroceso y trazadoras.
+- Alerta por radio cuando la horda empieza a sobrepasar al francotirador solitario.
 
-**Jugabilidad**
-- Objetivos secundarios por oleada, civiles que evacuar, soldados aliados, reparación de valla, rachas de bajas y ×2 por tiro a la cabeza.
+### 3. Visibilidad Clara de Enemigos en la Valla
+- Batería de focos y reflectores perimetrales instalados en los postes de la valla que iluminan el área de aproximación con haces de luz de alta intensidad.
+- Dos potentes focos tácticos en la torre de francotirador orientados hacia la valla.
+- Ajuste de niebla e iluminación ambiental nocturna para evitar que las figuras se pierdan en la oscuridad.
+- Marcadores tácticos de amenaza e indicadores visuales sobre la cabeza de los zombis conforme se aproximan a la línea.
 
-**Audio (100% procedural, sin assets)**
-- Disparos, recargas, explosiones, sirenas, gruñidos, radio militar con voz sintetizada y música dinámica según la amenaza.
+### 4. Mira Telescópica con Desenfoque Periférico
+- Zoom telescópico de alta precisión (4.5× base, ampliable a 6.5× y 9.0× mediante mejoras).
+- Efecto óptico de desenfoque periférico mediante filtro de lente que difumina y oscurece el entorno exterior a la retícula, minimizando distracciones y consumo de recursos.
+- Retícula táctica mil-dot con punto central rojo de precisión, telemetría de distancia en tiempo real (`RNG: XX M`) e identificación de blanco (`BLANCO: [TIPO]`).
 
-**Modo completo**
-- Menú principal, pausa, puntuación, récord local, ajustes (sensibilidad, volúmenes, calidad, voz) y guardado/continuación de progreso.
+### 5. Interfaz Minimalista Durante el Gameplay
+- HUD rediseñado con líneas limpias y estilizadas: barra superior delgada, pastillas tácticas compactas y paneles transparentes.
+- En modo mira telescópica, el HUD oculta automáticamente los elementos secundarios para ofrecer una visión 100% despejada del campo de batalla.
 
-## Estructura
+## Estructura del Proyecto
 
 ```
-index.html          Interfaz y HUD
-js/game.js          Núcleo: combate, oleadas, clima, UI y bucle
-js/world.js         Escenario, clima, valla, helicóptero y armas en vista
-js/entities.js      Zombis, jefes, civiles y soldados
-js/fx.js            Partículas y explosiones
-js/audio.js         Audio procedural (Web Audio API)
-resources/          Modelo Mauser 98K (GLTF + texturas)
+index.html          Interfaz minimalista, mira telescópica y controles táctiles adaptativos
+js/game.js          Núcleo del juego: combate, oleadas, torretas, cámara elevada y bucle principal
+js/world.js         Mundo 3D: torre de vigilancia, iluminación perimetral, valla y clima
+js/entities.js      Entidades: ametralladoras autónomas, zombis con visibilidad reforzada, civiles y soldados
+js/fx.js            Efectos visuales: trazadoras, destellos, impactos, humo y explosiones
+js/audio.js         Audio procedural: disparos, torretas, zoom óptico, explosiones y música dinámica
+resources/          Modelo 3D del fusil Mauser 98K (GLTF + texturas)
 ```
