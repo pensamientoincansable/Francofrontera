@@ -10,10 +10,10 @@ function lerpColor(a, b, f, out) {
 
 // keyframes del ciclo día/noche: t, cielo, niebla, densidad, sol, intSol, intHemi, agua, lámparas, estrellas
 const DAY_KEYS = [
-  { t: 0.00, sky: 0x51687c, fog: 0x1a2e38, den: 0.0085, sun: 0xffb37a, sunI: 2.0, hemi: 1.15, water: 0x14505c, lamp: 1.4, stars: 0 },
-  { t: 0.25, sky: 0x2e6b84, fog: 0x14323e, den: 0.0075, sun: 0xfff2d8, sunI: 2.9, hemi: 1.8, water: 0x0e7c8c, lamp: 0.4, stars: 0 },
-  { t: 0.50, sky: 0x4a3a52, fog: 0x201a26, den: 0.0095, sun: 0xff7b4d, sunI: 1.6, hemi: 0.9, water: 0x0a3c50, lamp: 2.4, stars: 0.15 },
-  { t: 0.75, sky: 0x050d16, fog: 0x050d14, den: 0.0110, sun: 0x8fb7ff, sunI: 0.55, hemi: 0.38, water: 0x06222e, lamp: 3.4, stars: 1 },
+  { t: 0.00, sky: 0x51687c, fog: 0x1a2e38, den: 0.0065, sun: 0xffb37a, sunI: 2.2, hemi: 1.35, water: 0x14505c, lamp: 1.6, stars: 0 },
+  { t: 0.25, sky: 0x2e6b84, fog: 0x14323e, den: 0.0055, sun: 0xfff2d8, sunI: 3.0, hemi: 1.9, water: 0x0e7c8c, lamp: 0.4, stars: 0 },
+  { t: 0.50, sky: 0x4a3a52, fog: 0x201a26, den: 0.0070, sun: 0xff7b4d, sunI: 1.8, hemi: 1.1, water: 0x0a3c50, lamp: 2.5, stars: 0.15 },
+  { t: 0.75, sky: 0x081320, fog: 0x08121c, den: 0.0072, sun: 0x8fb7ff, sunI: 0.75, hemi: 0.65, water: 0x06222e, lamp: 3.8, stars: 1 },
 ];
 function dayFrame(dayT) {
   const K = DAY_KEYS; let a = K[K.length - 1], b = K[0];
@@ -82,20 +82,20 @@ export class World {
 
   // ---------- terreno: agua animada + arena ----------
   buildTerrain() {
-    this.waterGeo = new THREE.PlaneGeometry(280, 280, 42, 42);
+    this.waterGeo = new THREE.PlaneGeometry(320, 300, 48, 48);
     this.waterGeo.rotateX(-Math.PI / 2);
     this.waterBase = this.waterGeo.attributes.position.array.slice();
     this.water = new THREE.Mesh(this.waterGeo, new THREE.MeshPhongMaterial({
       color: 0x0a343c, shininess: 110, transparent: true, opacity: 0.93
     }));
-    this.water.position.set(0, -0.15, -40);
+    this.water.position.set(0, -0.15, -45);
     this.scene.add(this.water);
     this.sand = new THREE.Mesh(
-      new THREE.PlaneGeometry(190, 44),
+      new THREE.PlaneGeometry(240, 110),
       new THREE.MeshStandardMaterial({ color: 0x8e7757, roughness: 1 })
     );
     this.sand.rotation.x = -Math.PI / 2;
-    this.sand.position.set(0, 0, 3);
+    this.sand.position.set(0, 0, 18);
     this.sand.receiveShadow = true;
     this.scene.add(this.sand);
     // rocas lejanas
@@ -137,15 +137,26 @@ export class World {
       this.fence.add(wire);
     }
     this.scene.add(this.fence);
-    // farolas
+    // farolas y focos de perímetro para iluminar a los zombis
     for (let x = -28; x <= 28; x += 7) {
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffa455 });
-      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), mat);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffe290 });
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), mat);
       lamp.position.set(x, 6, -1);
       this.scene.add(lamp); this.lampMats.push(mat);
-      const l = new THREE.PointLight(0xff7b3d, 2, 10, 1.6);
+      const l = new THREE.PointLight(0xffbf60, 2.5, 14, 1.4);
       l.position.copy(lamp.position);
       this.scene.add(l); this.lampLights.push(l);
+    }
+    // Focos potentes de vigilancia apuntando hacia el área de aproximación (z = -15)
+    for (const fx of [-21, -7, 7, 21]) {
+      const spot = new THREE.SpotLight(0xfff3d0, 4.5, 42, 0.75, 0.45, 1.2);
+      spot.position.set(fx, 6.2, -1);
+      const spotTgt = new THREE.Object3D();
+      spotTgt.position.set(fx * 0.9, 0, -16);
+      this.scene.add(spotTgt);
+      spot.target = spotTgt;
+      this.scene.add(spot);
+      this.lampLights.push(spot);
     }
   }
   fenceVisual(frac) {
@@ -161,47 +172,134 @@ export class World {
     this.fenceRails.forEach((r, i) => { r.position.y = r.position.y * 1; r.rotation.z = (i % 2 ? 1 : -1) * sag * 0.06; });
   }
 
-  // ---------- props: sacos, barriles, torre, extracción ----------
+  // ---------- props: sacos, barriles, nido de francotirador elevado, extracción ----------
   buildProps() {
     const sandMat = new THREE.MeshStandardMaterial({ color: 0x9a8a64, roughness: 1 });
-    for (let r = 0; r < 2; r++) for (let i = 0; i < 14; i++) {
+    const metalMat = new THREE.MeshStandardMaterial({ color: 0x3d454a, metalness: 0.75, roughness: 0.35 });
+    const darkWood = new THREE.MeshStandardMaterial({ color: 0x3b2d1d, roughness: 0.9 });
+    const camoMat = new THREE.MeshStandardMaterial({ color: 0x2b3b32, roughness: 0.8 });
+
+    // sacos defensivos en la valla
+    for (let r = 0; r < 2; r++) for (let i = 0; i < 18; i++) {
       const s = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.7, 3, 6), sandMat);
       s.rotation.z = Math.PI / 2;
-      s.position.set(-12 + i * 1.15 + (r ? 0.5 : 0), 0.32 + r * 0.55, 3.4);
+      s.position.set(-14 + i * 1.15 + (r ? 0.5 : 0), 0.32 + r * 0.55, 3.2);
       s.castShadow = true;
       this.scene.add(s);
     }
     const barrelMat = new THREE.MeshStandardMaterial({ color: 0x3d5a44, roughness: 0.7, metalness: 0.3 });
     const barrelMat2 = new THREE.MeshStandardMaterial({ color: 0x6e4a2a, roughness: 0.7, metalness: 0.3 });
-    [[-16, 5], [-15.2, 5.6], [18, 4.6], [18.9, 5.1], [17.4, 5.8]].forEach(([x, z], i) => {
+    [[-16, 5], [-15.2, 5.6], [18, 4.6], [18.9, 5.1], [17.4, 5.8], [-4, 28], [4, 28], [-5, 36], [5, 36]].forEach(([x, z], i) => {
       const b = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.4, 10), i % 2 ? barrelMat2 : barrelMat);
       b.position.set(x, 0.7, z); b.castShadow = true;
       this.scene.add(b);
     });
-    // torre de vigilancia
-    const wood = new THREE.MeshStandardMaterial({ color: 0x5a4a33, roughness: 0.9 });
-    const tower = new THREE.Group(); tower.position.set(-19, 0, 5);
-    for (const [lx, lz] of [[-1.2, -1.2], [1.2, -1.2], [-1.2, 1.2], [1.2, 1.2]]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.28, 7.5, 0.28), wood);
-      leg.position.set(lx, 3.75, lz); leg.castShadow = true; tower.add(leg);
+
+    // ========== GRAN TORRE / NIDO ELEVADO DEL FRANCOTIRADOR (x=0, z=34, y=13.5) ==========
+    const tower = new THREE.Group();
+    tower.position.set(0, 0, 34);
+
+    // 4 pilares estructurales de acero desde el suelo hasta la plataforma
+    const pillarCoords = [[-3.4, -2.6], [3.4, -2.6], [-3.4, 2.6], [3.4, 2.6]];
+    for (const [lx, lz] of pillarCoords) {
+      const pilar = new THREE.Mesh(new THREE.BoxGeometry(0.55, 12.4, 0.55), metalMat);
+      pilar.position.set(lx, 6.2, lz);
+      pilar.castShadow = true;
+      tower.add(pilar);
+      // zapata de hormigón
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.2), new THREE.MeshStandardMaterial({ color: 0x555855, roughness: 0.9 }));
+      base.position.set(lx, 0.25, lz);
+      tower.add(base);
     }
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(3.4, 2.2, 3.4), wood);
-    cabin.position.y = 8.4; cabin.castShadow = true; tower.add(cabin);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(2.8, 1.4, 4), new THREE.MeshStandardMaterial({ color: 0x33413a, roughness: 0.8 }));
-    roof.position.y = 10.2; roof.rotation.y = Math.PI / 4; tower.add(roof);
+    // vigas cruzadas de refuerzo
+    for (const yLevel of [3.5, 7.5, 11.2]) {
+      const bFront = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.25, 0.25), metalMat);
+      bFront.position.set(0, yLevel, -2.6); tower.add(bFront);
+      const bBack = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.25, 0.25), metalMat);
+      bBack.position.set(0, yLevel, 2.6); tower.add(bBack);
+      const bLeft = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 5.2), metalMat);
+      bLeft.position.set(-3.4, yLevel, 0); tower.add(bLeft);
+      const bRight = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 5.2), metalMat);
+      bRight.position.set(3.4, yLevel, 0); tower.add(bRight);
+    }
+
+    // Suelo de la plataforma del francotirador a y = 12.15
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(7.6, 0.35, 6.4), metalMat);
+    deck.position.set(0, 12.15, 0);
+    deck.receiveShadow = true;
+    tower.add(deck);
+
+    // Parapeto balístico frontal con sacos de arena (apoyo de francotirador)
+    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(7.4, 0.95, 0.4), darkWood);
+    frontWall.position.set(0, 12.75, -2.8);
+    frontWall.castShadow = true;
+    tower.add(frontWall);
+
+    // Hilera de sacos de arena en el frontal del nido
+    for (let i = 0; i < 9; i++) {
+      const bag = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.55, 3, 6), sandMat);
+      bag.rotation.z = Math.PI / 2;
+      bag.position.set(-3.0 + i * 0.75, 13.25, -2.8);
+      bag.castShadow = true;
+      tower.add(bag);
+    }
+
+    // Barandillas laterales y traseras
+    for (const sx of [-3.7, 3.7]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.1, 6.2), metalMat);
+      rail.position.set(sx, 12.8, 0); tower.add(rail);
+    }
+    const backRail = new THREE.Mesh(new THREE.BoxGeometry(7.4, 1.1, 0.12), metalMat);
+    backRail.position.set(0, 12.8, 3.1); tower.add(backRail);
+
+    // Techo / marquesina militar
+    const roofPillarCoords = [[-3.4, -2.6], [3.4, -2.6], [-3.4, 2.6], [3.4, 2.6]];
+    for (const [lx, lz] of roofPillarCoords) {
+      const rp = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4.2, 0.2), metalMat);
+      rp.position.set(lx, 14.3, lz); tower.add(rp);
+    }
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(8.2, 0.18, 7.0), camoMat);
+    canopy.position.set(0, 16.4, 0);
+    canopy.castShadow = true;
+    tower.add(canopy);
+
+    // Mástil de comunicaciones y baliza roja superior
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 3.6, 6), metalMat);
+    mast.position.set(-3.2, 18.2, -2.4); tower.add(mast);
     this.beaconMat = new THREE.MeshBasicMaterial({ color: 0xff3344 });
-    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), this.beaconMat);
-    beacon.position.y = 11.1; tower.add(beacon);
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), this.beaconMat);
+    beacon.position.set(-3.2, 20.0, -2.4); tower.add(beacon);
+
+    // Focos frontales de la torre apuntando hacia el terreno / valla
+    for (const fx of [-3.2, 3.2]) {
+      const towerSpot = new THREE.SpotLight(0xffeed0, 5.0, 80, 0.6, 0.3, 1.2);
+      towerSpot.position.set(fx, 13.6, -2.8);
+      const tgt = new THREE.Object3D();
+      tgt.position.set(fx * 1.5, 0, -5);
+      this.scene.add(tgt);
+      towerSpot.target = tgt;
+      tower.add(towerSpot);
+      this.lampLights.push(towerSpot);
+    }
+
+    // Equipo táctico dentro del nido (cajas de munición, radio)
+    const ammoBox = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.45, 0.5), new THREE.MeshStandardMaterial({ color: 0x2e4a32, roughness: 0.6 }));
+    ammoBox.position.set(-2.2, 12.5, -1.8); ammoBox.castShadow = true; tower.add(ammoBox);
+    const radioMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.4), new THREE.MeshStandardMaterial({ color: 0x1d2426, metalness: 0.8, roughness: 0.3 }));
+    radioMesh.position.set(2.4, 12.5, -1.8); tower.add(radioMesh);
+    const radioAnt = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.2, 4), metalMat);
+    radioAnt.position.set(2.6, 13.3, -1.9); tower.add(radioAnt);
+
     this.scene.add(tower);
+
     // punto de extracción (bandera verde)
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 5, 6), metal2());
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 5, 6), metalMat);
     pole.position.set(26, 2.5, 2); this.scene.add(pole);
-    function metal2() { return new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.6, roughness: 0.5 }); }
     this.flagMat = new THREE.MeshBasicMaterial({ color: 0x2bd96a, side: THREE.DoubleSide });
     const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1), this.flagMat);
     flag.position.set(26.85, 4.4, 2); this.scene.add(flag);
     this.flag = flag;
-    const ex = new THREE.PointLight(0x2bd96a, 1.5, 8, 1.8);
+    const ex = new THREE.PointLight(0x2bd96a, 1.8, 10, 1.8);
     ex.position.set(26, 3, 2); this.scene.add(ex);
   }
 
@@ -499,7 +597,10 @@ export class World {
   updateViewmodel(dt, t, firing) {
     this.zoomBlend += (this.zoomTarget - this.zoomBlend) * Math.min(1, dt * 9);
     const zb = this.zoomBlend;
-    const aimPos = (this.curW <= 1) ? this.vmAim : V3(0.14, -0.27, -0.6);
+    // Con el rifle (curW === 0), al hacer zoom el arma se repliega hacia abajo para despejar la mira telescópica
+    const aimPos = (this.curW === 0)
+      ? V3(0, -0.65, -0.4)
+      : (this.curW === 1 ? this.vmAim : V3(0.14, -0.27, -0.6));
     const sway = firing ? 0 : 1;
     this.vm.position.lerpVectors(this.vmBase, aimPos, zb);
     this.vm.position.y += Math.sin(t * 1.7) * 0.004 * sway;

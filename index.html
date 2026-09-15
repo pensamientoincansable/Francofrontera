@@ -2,228 +2,542 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>FRONTERA // Dead Tide — Edición Completa</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
-:root{--cyan:#7cf8ff;--amber:#ffb84c;--red:#ff5470;--green:#7dff9e;--ink:#071017;--sp:14px}
-*{box-sizing:border-box}html,body{margin:0;overflow:hidden;background:#071017;color:#e8fbff;font-family:'Barlow Condensed',sans-serif;user-select:none;-webkit-user-select:none}
-#game{position:fixed;inset:0}canvas{display:block}
-#hud{position:fixed;inset:0;pointer-events:none;z-index:2}
-/* ===== top bar ===== */
-.topbar{height:78px;display:flex;justify-content:space-between;align-items:center;padding:0 30px;background:linear-gradient(180deg,rgba(3,12,18,.94),rgba(3,12,18,.35),transparent);letter-spacing:.12em}
-.brand{font-weight:800;font-size:22px;line-height:.9}.brand small{display:block;color:var(--cyan);font:10px 'JetBrains Mono';letter-spacing:.2em;margin-top:5px}
-.status{display:flex;gap:20px;align-items:center;font:11px 'JetBrains Mono';color:#9bb8be}
-.status b{color:#f0fcff;font-size:14px}
-.badge{border:1px solid #38545c;padding:6px 11px;color:var(--cyan);background:#102029bb}
-.iconbtn{pointer-events:auto;background:#0c1b23d9;border:1px solid #425d63;color:#dffcff;font:700 13px 'JetBrains Mono';width:34px;height:34px;cursor:pointer}
-.iconbtn:hover{border-color:var(--cyan)}
-/* ===== boss bar ===== */
-#bossbar{position:absolute;top:86px;left:50%;transform:translateX(-50%);width:min(520px,70vw);text-align:center;display:none}
-#bossName{font:700 13px 'JetBrains Mono';letter-spacing:.2em;color:var(--red);text-shadow:0 0 12px #ff547088}
-#bossTrack{height:8px;background:#2a1218;border:1px solid #ff547055;margin-top:5px}
-#bossFill{height:100%;width:100%;background:linear-gradient(90deg,#ff5470,#ff8a5c);box-shadow:0 0 12px var(--red);transition:width .2s}
-/* ===== left panel ===== */
-.left{position:absolute;left:30px;top:110px;max-width:300px}
-.wave-label{color:#a9c5c9;font:11px 'JetBrains Mono';letter-spacing:.18em}
-.wave{font-size:52px;font-weight:800;line-height:1;color:#f7fcfb}.wave span{color:var(--cyan)}
-.objective{margin-top:10px;border-left:2px solid var(--amber);padding-left:12px;color:#b7ced1;font:11px 'JetBrains Mono';letter-spacing:.06em}
-.objective strong{color:var(--amber);font-weight:400}
-#objList{margin-top:10px;display:flex;flex-direction:column;gap:6px}
-.obj{font:11px 'JetBrains Mono';color:#cfe3e6;background:#0a161ccc;border:1px solid #2b464d;padding:6px 9px;letter-spacing:.04em}
-.obj.done{border-color:var(--green);color:var(--green);text-decoration:line-through}
-.obj .rw{color:var(--amber)}
-/* ===== right panel ===== */
-.right{position:absolute;right:30px;top:110px;text-align:right}
-.threat{font:11px 'JetBrains Mono';color:#a9c5c9;letter-spacing:.18em}
-.threat b{font-size:30px;color:var(--red);font-family:'Barlow Condensed'}
-.meter{width:180px;height:5px;background:#1f2a2e;margin-top:6px;margin-left:auto}
-.meter i{display:block;width:20%;height:100%;background:var(--red);box-shadow:0 0 10px var(--red);transition:width .4s}
-#streak{margin-top:10px;font:700 15px 'JetBrains Mono';color:var(--amber);text-shadow:0 0 12px #ffb84c66;min-height:20px}
-#mult{font:700 12px 'JetBrains Mono';color:var(--cyan);min-height:16px}
-/* ===== crosshair ===== */
-#crosshair{position:absolute;left:50%;top:50%;width:120px;height:120px;transform:translate(-50%,-50%);opacity:.9}
-#crosshair .ring{position:absolute;inset:calc(50% - 34px);border-radius:50%;border:1px solid #6e969b66}
-#crosshair .ring:before,#crosshair .ring:after{content:'';position:absolute;background:#6e969b44}
-#crosshair .ring:before{height:1px;left:-14px;right:-14px;top:50%}
-#crosshair .ring:after{width:1px;top:-14px;bottom:-14px;left:50%}
-.ch{position:absolute;background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
-.ch.t{width:2px;height:16px;left:59px;top:calc(60px - var(--sp) - 16px)}
-.ch.b{width:2px;height:16px;left:59px;top:calc(60px + var(--sp))}
-.ch.l{height:2px;width:16px;top:59px;left:calc(60px - var(--sp) - 16px)}
-.ch.r{height:2px;width:16px;top:59px;left:calc(60px + var(--sp))}
-.dot{position:absolute;left:58px;top:58px;width:4px;height:4px;border:1px solid #fff;border-radius:50%}
-#crosshair.launch .ch{background:var(--amber);box-shadow:0 0 8px var(--amber)}
-#crosshair.launch .ring{border-color:#ffb84c88}
-#hitmarker{position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%) rotate(45deg);opacity:0}
+:root{
+  --cyan:#7cf8ff;
+  --amber:#ffb84c;
+  --red:#ff5470;
+  --green:#7dff9e;
+  --ink:#060e14;
+  --hud-bg:rgba(7,16,23,0.72);
+  --hud-border:rgba(56,84,92,0.55);
+  --sp:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{
+  margin:0;overflow:hidden;background:#050c12;color:#e8fbff;
+  font-family:'Barlow Condensed',sans-serif;
+  user-select:none;-webkit-user-select:none;touch-action:none;
+  width:100%;height:100%;position:fixed;
+}
+#game{position:fixed;inset:0;touch-action:none}
+canvas{display:block;touch-action:none}
+
+/* ===== HUD MINIMALISTA Y TÁCTICO ===== */
+#hud{
+  position:fixed;inset:0;pointer-events:none;z-index:2;
+  transition:opacity .2s ease-out;
+}
+#hud.hud-scoped .hud-hide-scoped{
+  opacity:0 !important;pointer-events:none !important;
+}
+
+/* ===== TOP BAR ULTRA-SLIM ===== */
+.topbar{
+  position:absolute;top:0;left:0;right:0;height:42px;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:0 18px;
+  background:linear-gradient(180deg,rgba(4,10,15,.88),rgba(4,10,15,.25),transparent);
+  letter-spacing:.1em;z-index:4;
+}
+.brand{font-weight:800;font-size:16px;line-height:1;display:flex;align-items:center;gap:8px}
+.brand small{color:var(--cyan);font:700 9px 'JetBrains Mono';letter-spacing:.2em;background:rgba(16,32,41,.85);padding:2px 6px;border:1px solid #38545c}
+.top-center{display:flex;align-items:center;gap:14px}
+.status{display:flex;gap:14px;align-items:center;font:11px 'JetBrains Mono';color:#9bb8be}
+.status b{color:#f0fcff;font-size:13px}
+.iconbtn{
+  pointer-events:auto;background:rgba(12,27,35,.85);border:1px solid #425d63;
+  color:#dffcff;font:700 12px 'JetBrains Mono';width:30px;height:30px;cursor:pointer;
+  display:grid;place-items:center;transition:border-color .15s;
+}
+.iconbtn:hover{border-color:var(--cyan);color:var(--cyan)}
+
+/* ===== BOSS BAR MINIMAL ===== */
+#bossbar{
+  position:absolute;top:48px;left:50%;transform:translateX(-50%);
+  width:min(440px,70vw);text-align:center;display:none;z-index:4;
+}
+#bossName{font:700 11px 'JetBrains Mono';letter-spacing:.2em;color:var(--red);text-shadow:0 0 10px #ff547088}
+#bossTrack{height:6px;background:#240c12;border:1px solid #ff547066;margin-top:3px}
+#bossFill{height:100%;width:100%;background:linear-gradient(90deg,#ff5470,#ff9a6c);box-shadow:0 0 10px var(--red);transition:width .2s}
+
+/* ===== TACTICAL STATUS PILLS ===== */
+.tactical-left{
+  position:absolute;left:18px;top:50px;display:flex;flex-direction:column;gap:5px;
+  pointer-events:none;
+}
+.pill{
+  display:inline-flex;align-items:center;gap:7px;
+  background:rgba(8,18,24,.78);border:1px solid #2b464d;
+  padding:4px 10px;font:11px 'JetBrains Mono';letter-spacing:.08em;
+  color:#cfe3e6;backdrop-filter:blur(4px);
+}
+.pill b{color:var(--cyan);font-weight:700}
+.pill.alert{border-color:var(--red);color:var(--red)}
+.pill.alert b{color:#fff}
+#objList{display:flex;flex-direction:column;gap:4px;margin-top:2px}
+.obj{
+  font:10px 'JetBrains Mono';color:#9ebdc2;background:rgba(6,14,19,.75);
+  border-left:2px solid var(--amber);padding:3px 8px;letter-spacing:.04em;
+}
+.obj.done{border-left-color:var(--green);color:var(--green);text-decoration:line-through}
+
+.tactical-right{
+  position:absolute;right:18px;top:50px;display:flex;flex-direction:column;align-items:flex-end;gap:5px;
+  pointer-events:none;
+}
+.threat-meter{
+  width:120px;height:4px;background:#152226;border:1px solid #2b464d;overflow:hidden;
+}
+.threat-meter i{display:block;width:20%;height:100%;background:var(--red);box-shadow:0 0 8px var(--red);transition:width .35s}
+#streak{font:700 13px 'JetBrains Mono';color:var(--amber);text-shadow:0 0 10px #ffb84c66;min-height:16px}
+
+/* ===== MIRA DE NO-ZOOM (HIPFIRE) ===== */
+#crosshair{
+  position:absolute;left:50%;top:50%;width:64px;height:64px;
+  transform:translate(-50%,-50%);opacity:.85;pointer-events:none;
+}
+#crosshair .ring{position:absolute;inset:calc(50% - 16px);border-radius:50%;border:1px solid rgba(124,248,255,.3)}
+.ch{position:absolute;background:var(--cyan);box-shadow:0 0 6px var(--cyan)}
+.ch.t{width:1.5px;height:12px;left:31.25px;top:calc(32px - var(--sp) - 12px)}
+.ch.b{width:1.5px;height:12px;left:31.25px;top:calc(32px + var(--sp))}
+.ch.l{height:1.5px;width:12px;top:31.25px;left:calc(32px - var(--sp) - 12px)}
+.ch.r{height:1.5px;width:12px;top:31.25px;left:calc(32px + var(--sp))}
+.dot{position:absolute;left:30.5px;top:30.5px;width:3px;height:3px;border-radius:50%;background:#fff}
+#crosshair.launch .ch{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+#hitmarker{position:absolute;left:50%;top:50%;width:34px;height:34px;transform:translate(-50%,-50%) rotate(45deg);opacity:0;pointer-events:none}
 #hitmarker:before,#hitmarker:after{content:'';position:absolute;background:#fff;box-shadow:0 0 8px #fff}
-#hitmarker:before{left:21px;top:4px;width:2px;height:36px}
-#hitmarker:after{top:21px;left:4px;height:2px;width:36px}
+#hitmarker:before{left:16px;top:3px;width:2px;height:28px}
+#hitmarker:after{top:16px;left:3px;height:2px;width:28px}
 #hitmarker.show{opacity:1}
 #hitmarker.head:before,#hitmarker.head:after{background:var(--red);box-shadow:0 0 10px var(--red)}
-.hint{position:absolute;left:50%;top:calc(50% + 82px);transform:translateX(-50%);font:10px 'JetBrains Mono';letter-spacing:.1em;color:#9fb5b8;background:#07101799;padding:5px 10px;white-space:nowrap}
-/* ===== toasts / radio / popups ===== */
-.toast{position:absolute;left:50%;top:24%;transform:translate(-50%,-50%);font:700 22px 'JetBrains Mono';letter-spacing:.1em;color:var(--cyan);opacity:0;text-shadow:0 0 18px var(--cyan);transition:opacity .2s;text-align:center;white-space:nowrap}
+
+/* ===== MIRA TELESCÓPICA SNIPER // DESENFOQUE PERIFÉRICO ===== */
+#scopeView{
+  position:fixed;inset:0;pointer-events:none;z-index:6;
+  display:flex;align-items:center;justify-content:center;
+  opacity:1;transition:opacity .15s ease-out;
+}
+#scopeView.hidden{display:none;opacity:0}
+
+/* Capa de desenfoque periférico ("entorno de la mira borroso para minimizar recursos") */
+.scope-blur-layer{
+  position:absolute;inset:0;
+  backdrop-filter:blur(14px) brightness(0.25) contrast(1.15);
+  -webkit-backdrop-filter:blur(14px) brightness(0.25) contrast(1.15);
+  mask-image:radial-gradient(circle at center, transparent 0, transparent 33vmin, black 37vmin, black 100%);
+  -webkit-mask-image:radial-gradient(circle at center, transparent 0, transparent 33vmin, black 37vmin, black 100%);
+}
+
+/* Bisel circular exterior de la lente del rifle */
+.scope-bezel{
+  position:absolute;
+  width:70vmin;height:70vmin;border-radius:50%;
+  box-shadow:0 0 0 9999px rgba(3,8,12,0.92),
+             inset 0 0 35px 10px rgba(0,0,0,0.98),
+             0 0 20px rgba(0,0,0,0.9);
+  border:2.5px solid rgba(124,248,255,0.4);
+}
+
+/* Retícula interna del francotirador */
+.scope-reticle{
+  position:absolute;width:70vmin;height:70vmin;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;
+}
+.scope-line-h{
+  position:absolute;left:8%;right:8%;height:1px;
+  background:rgba(124,248,255,0.85);box-shadow:0 0 4px rgba(124,248,255,0.5);
+}
+.scope-line-v{
+  position:absolute;top:8%;bottom:8%;width:1px;
+  background:rgba(124,248,255,0.85);box-shadow:0 0 4px rgba(124,248,255,0.5);
+}
+.scope-center-dot{
+  position:absolute;width:4px;height:4px;border-radius:50%;
+  background:#ff5470;box-shadow:0 0 6px #ff5470;
+}
+.scope-circle-inner{
+  position:absolute;width:32vmin;height:32vmin;border-radius:50%;
+  border:1px dashed rgba(124,248,255,0.3);
+}
+.scope-mils{
+  position:absolute;inset:0;
+  background-image:radial-gradient(circle at center, transparent 0, transparent 2px, rgba(124,248,255,0.5) 2.5px, transparent 3px);
+  background-size:24px 24px;background-position:center;opacity:.4;
+}
+.scope-hud-readout{
+  position:absolute;bottom:14%;left:50%;transform:translateX(-50%);
+  display:flex;gap:12px;font:700 11px 'JetBrains Mono';letter-spacing:.12em;
+  color:var(--cyan);background:rgba(5,13,18,.8);padding:3px 12px;border:1px solid #2b464d;
+  text-shadow:0 0 8px rgba(124,248,255,.6);border-radius:2px;
+}
+.scope-hud-readout span b{color:#fff}
+
+/* ===== TOASTS, RADIO, POPUPS ===== */
+.toast{
+  position:absolute;left:50%;top:20%;transform:translate(-50%,-50%);
+  font:700 20px 'JetBrains Mono';letter-spacing:.12em;color:var(--cyan);
+  opacity:0;text-shadow:0 0 16px var(--cyan);transition:opacity .2s;text-align:center;
+  white-space:nowrap;pointer-events:none;z-index:7;
+}
 .toast.show{opacity:1}
-#radio{position:absolute;left:30px;bottom:170px;max-width:380px;font:12px 'JetBrains Mono';color:#d9f4ea;background:#0a1a12d9;border:1px solid #2f5b43;border-left:3px solid var(--green);padding:8px 12px;opacity:0;transition:opacity .3s;line-height:1.5}
+#radio{
+  position:absolute;left:18px;bottom:100px;max-width:340px;font:11px 'JetBrains Mono';
+  color:#d9f4ea;background:rgba(8,22,16,.85);border:1px solid #2f5b43;
+  border-left:3px solid var(--green);padding:6px 10px;opacity:0;transition:opacity .25s;
+  line-height:1.4;pointer-events:none;backdrop-filter:blur(4px);
+}
 #radio.show{opacity:1}
 #radio b{color:var(--green)}
-#popups{position:absolute;inset:0;overflow:hidden}
-.pop{position:absolute;font:700 16px 'JetBrains Mono';color:#fff;text-shadow:0 0 10px var(--cyan);animation:floatUp .9s ease-out forwards;transform:translate(-50%,-50%);white-space:nowrap}
-.pop.head{color:#ffd166;text-shadow:0 0 12px #ff5470;font-size:18px}
-.pop.bonus{color:var(--green);text-shadow:0 0 12px var(--green)}
-.pop.bad{color:var(--red);text-shadow:0 0 12px var(--red)}
-@keyframes floatUp{0%{opacity:0;margin-top:0}15%{opacity:1}100%{opacity:0;margin-top:-46px}}
-/* ===== fx overlays ===== */
+#popups{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.pop{
+  position:absolute;font:700 15px 'JetBrains Mono';color:#fff;
+  text-shadow:0 0 8px var(--cyan);animation:floatUp .85s ease-out forwards;
+  transform:translate(-50%,-50%);white-space:nowrap;
+}
+.pop.head{color:#ffd166;text-shadow:0 0 10px #ff5470;font-size:17px}
+.pop.bonus{color:var(--green);text-shadow:0 0 10px var(--green)}
+.pop.bad{color:var(--red);text-shadow:0 0 10px var(--red)}
+@keyframes floatUp{0%{opacity:0;margin-top:0}15%{opacity:1}100%{opacity:0;margin-top:-40px}}
+
+/* ===== FX OVERLAYS ===== */
 .damage{position:absolute;inset:0;background:radial-gradient(ellipse,transparent 35%,rgba(255,20,45,.5));opacity:0;pointer-events:none}
-.damage.hit{animation:hit .45s}@keyframes hit{0%,100%{opacity:0}30%{opacity:1}}
+.damage.hit{animation:hit .4s}@keyframes hit{0%,100%{opacity:0}30%{opacity:1}}
 #lowhp{position:absolute;inset:0;background:radial-gradient(ellipse,transparent 45%,rgba(255,0,30,.45));opacity:0;pointer-events:none}
 .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
-.flash.fire{animation:fire .14s}@keyframes fire{0%{opacity:.55}100%{opacity:0}}
-#vignette{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 48%,transparent 55%,rgba(0,0,0,.55));pointer-events:none}
-/* ===== bottom hud ===== */
-.bottom{position:absolute;left:30px;right:30px;bottom:22px;display:flex;align-items:flex-end;justify-content:space-between;gap:14px}
-.weapon{display:flex;align-items:center;gap:14px}
-.weapon-icon{width:48px;height:48px;border:1px solid #526a70;background:#10212a;display:grid;place-items:center;color:var(--cyan);font-size:21px}
-.weapon h3{margin:0;font-size:19px;letter-spacing:.08em}
-.weapon p{margin:3px 0 0;color:#87a5aa;font:10px 'JetBrains Mono'}
-.ammo{font:700 28px 'JetBrains Mono';color:#fff}
-.ammo small{font-size:12px;color:#7f989e}
-#reloadWrap{width:110px;height:4px;background:#1f2a2e;margin-top:4px;display:none}
+.flash.fire{animation:fire .12s}@keyframes fire{0%{opacity:.5}100%{opacity:0}}
+#vignette{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 48%,transparent 58%,rgba(0,0,0,.6));pointer-events:none}
+
+/* ===== BOTTOM BAR MINIMALISTA ===== */
+.bottom{
+  position:absolute;left:18px;right:18px;bottom:14px;
+  display:flex;align-items:flex-end;justify-content:space-between;gap:12px;
+  pointer-events:none;
+}
+.hud-panel{
+  background:rgba(8,18,24,.82);border:1px solid #2b464d;
+  padding:7px 12px;backdrop-filter:blur(6px);
+}
+.weapon-hud{display:flex;align-items:center;gap:10px}
+.weapon-icon{
+  width:38px;height:38px;border:1px solid #4a6268;background:#0d1c24;
+  display:grid;place-items:center;color:var(--cyan);font-size:18px;
+}
+.weapon-info h3{font-size:16px;letter-spacing:.08em;line-height:1}
+.weapon-info p{margin:2px 0 0;color:#87a5aa;font:9px 'JetBrains Mono'}
+.ammo-box{display:flex;flex-direction:column;align-items:flex-end}
+.ammo{font:700 24px 'JetBrains Mono';color:#fff;line-height:1}
+.ammo small{font-size:11px;color:#7f989e}
+#reloadWrap{width:70px;height:3px;background:#1b2529;margin-top:3px;display:none}
 #reloadFill{height:100%;width:0;background:var(--cyan)}
-#slots{display:flex;gap:6px;margin-top:8px;pointer-events:auto}
-.slot{width:44px;height:34px;border:1px solid #2b464d;background:#0a161ccc;color:#7d99a0;font:700 11px 'JetBrains Mono';display:grid;place-items:center;cursor:pointer;position:relative}
-.slot small{position:absolute;top:1px;left:4px;font-size:8px;color:#5a747a}
-.slot.sel{border-color:var(--cyan);color:#fff;box-shadow:0 0 10px #7cf8ff44}
+#slots{display:flex;gap:4px;margin-top:5px;pointer-events:auto}
+.slot{
+  width:32px;height:24px;border:1px solid #2b464d;background:#091419cc;
+  color:#7d99a0;font:700 9px 'JetBrains Mono';display:grid;place-items:center;
+  cursor:pointer;position:relative;
+}
+.slot.sel{border-color:var(--cyan);color:#fff;box-shadow:0 0 8px #7cf8ff44}
 .slot.locked{opacity:.3;cursor:not-allowed}
-.midbars{display:flex;flex-direction:column;gap:7px;min-width:220px}
-.bar-row{display:flex;align-items:center;gap:8px;font:10px 'JetBrains Mono';color:#9fb5b8;letter-spacing:.1em}
-.bar{flex:1;height:9px;background:#141f22;border:1px solid #2b464d}
-.bar i{display:block;height:100%;transition:width .25s}
-#fenceFill{background:linear-gradient(90deg,#ffb84c,#ffe1a8);box-shadow:0 0 8px #ffb84c66}
-#hpFill{background:linear-gradient(90deg,#37e08b,#b6ffd6);box-shadow:0 0 8px #37e08b66}
-#civs{font:11px 'JetBrains Mono';color:#9fb5b8;letter-spacing:.08em}
-#civs b{color:var(--green)}
-.actions{display:flex;gap:10px;pointer-events:auto}
-.action{height:54px;min-width:128px;padding:6px 14px;background:#0c1b23d9;border:1px solid #425d63;color:#dffcff;text-align:left;cursor:pointer;transition:.2s;font:600 15px 'Barlow Condensed';letter-spacing:.08em}
-.action:hover:not(:disabled){border-color:var(--cyan);background:#13333c}
+
+/* barras centrales */
+.midbars{display:flex;flex-direction:column;gap:5px;min-width:180px}
+.bar-row{display:flex;align-items:center;gap:6px;font:9px 'JetBrains Mono';color:#9fb5b8;letter-spacing:.08em}
+.bar{flex:1;height:7px;background:#111b1e;border:1px solid #283e44}
+.bar i{display:block;height:100%;transition:width .2s}
+#fenceFill{background:linear-gradient(90deg,#ffb84c,#ffe1a8);box-shadow:0 0 6px #ffb84c66}
+#hpFill{background:linear-gradient(90deg,#37e08b,#b6ffd6);box-shadow:0 0 6px #37e08b66}
+.turret-badge{
+  font:10px 'JetBrains Mono';color:var(--cyan);letter-spacing:.06em;
+  display:flex;align-items:center;justify-content:space-between;margin-top:2px;
+}
+.turret-badge b{color:#fff}
+
+/* botones de acción minimalistas */
+.actions{display:flex;gap:7px;pointer-events:auto}
+.action{
+  height:44px;min-width:105px;padding:4px 10px;
+  background:rgba(12,27,35,.88);border:1px solid #425d63;
+  color:#dffcff;text-align:left;cursor:pointer;transition:.15s;
+  font:600 13px 'Barlow Condensed';letter-spacing:.06em;
+}
+.action strong{display:block;line-height:1.1}
+.action span{display:block;color:#819da2;font:8px 'JetBrains Mono';margin-top:2px}
+.action:hover:not(:disabled){border-color:var(--cyan);background:#12323b}
 .action:disabled{opacity:.35;cursor:not-allowed}
-.action span{display:block;color:#819da2;font:9px 'JetBrains Mono';margin-top:3px}
-.action.hot{border-color:#986033}.action.hot strong{color:var(--amber)}
-/* ===== intermission ===== */
-#interBar{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);display:none;align-items:center;gap:14px;background:#0a161ce6;border:1px solid var(--cyan);padding:10px 18px;font:700 15px 'JetBrains Mono';color:var(--cyan);pointer-events:auto}
-#btnNextWave{background:var(--cyan);border:0;color:#071017;font:700 14px 'Barlow Condensed';letter-spacing:.12em;padding:9px 18px;cursor:pointer}
-#btnNextWave:hover{box-shadow:0 0 18px #7cf8ff66}
-/* ===== screens ===== */
-.screen{position:fixed;inset:0;background:radial-gradient(ellipse at 55% 45%,transparent 0,#040b10e6 82%),#071017f2;display:grid;place-items:center;z-index:10}
+.action.hot{border-color:#ffb84c88}.action.hot strong{color:var(--amber)}
+.action.pulse{animation:turretPulse 1.2s infinite alternate}
+@keyframes turretPulse{from{border-color:#ffb84c;box-shadow:0 0 4px #ffb84c66}to{border-color:var(--cyan);box-shadow:0 0 12px var(--cyan)}}
+
+/* ===== CONTROLES TÁCTILES ADAPTATIVOS (ANDROID / MÓVIL) ===== */
+#touchControls{
+  position:fixed;inset:0;pointer-events:none;z-index:3;
+  display:none;
+}
+body.is-touch #touchControls{display:block}
+
+/* Zona táctil para apuntar (Touch-drag look surface) */
+#touchAimPad{
+  position:absolute;left:0;top:42px;width:60vw;bottom:75px;
+  pointer-events:auto;touch-action:none;
+}
+
+/* Contenedor de botones táctiles a la derecha */
+.touch-right-cluster{
+  position:absolute;right:18px;bottom:85px;
+  display:flex;flex-direction:column;align-items:center;gap:14px;
+  pointer-events:auto;
+}
+.tbtn{
+  border-radius:50%;display:grid;place-items:center;
+  font:700 12px 'JetBrains Mono';cursor:pointer;
+  touch-action:none;user-select:none;-webkit-user-select:none;
+  box-shadow:0 4px 14px rgba(0,0,0,.6);transition:transform .08s,border-color .1s;
+}
+.tbtn:active{transform:scale(0.92)}
+.tbtn-fire{
+  width:72px;height:72px;background:radial-gradient(circle,#ff5470cc,#991a30f0);
+  border:2.5px solid #ffa0b0;color:#fff;font-size:13px;letter-spacing:.05em;
+  box-shadow:0 0 16px rgba(255,84,112,.5);
+}
+.tbtn-scope{
+  width:56px;height:56px;background:rgba(12,32,42,.9);
+  border:2px solid var(--cyan);color:var(--cyan);
+}
+.tbtn-scope.active{
+  background:var(--cyan);color:#071017;box-shadow:0 0 14px var(--cyan);
+}
+.tbtn-reload{
+  width:46px;height:46px;background:rgba(15,25,32,.88);
+  border:1.5px solid #6e8a91;color:#dffcff;font-size:10px;
+}
+/* Barra de acciones rápidas táctiles */
+.touch-action-bar{
+  position:absolute;left:18px;bottom:70px;
+  display:flex;gap:8px;pointer-events:auto;
+}
+.tbtn-pill{
+  background:rgba(12,27,35,.88);border:1px solid #425d63;
+  color:#dffcff;font:700 10px 'JetBrains Mono';padding:6px 10px;
+  border-radius:4px;cursor:pointer;touch-action:none;
+}
+.tbtn-pill.hot{border-color:var(--amber);color:var(--amber)}
+
+/* ===== INTERMISIÓN ===== */
+#interBar{
+  position:absolute;left:50%;bottom:80px;transform:translateX(-50%);
+  display:none;align-items:center;gap:12px;background:rgba(10,22,30,.92);
+  border:1px solid var(--cyan);padding:8px 16px;font:700 13px 'JetBrains Mono';
+  color:var(--cyan);pointer-events:auto;z-index:4;
+}
+#btnNextWave{
+  background:var(--cyan);border:0;color:#071017;font:700 13px 'Barlow Condensed';
+  letter-spacing:.1em;padding:7px 14px;cursor:pointer;
+}
+
+/* ===== PANTALLAS / MODALES ===== */
+.screen{
+  position:fixed;inset:0;background:radial-gradient(ellipse at 55% 45%,transparent 0,#040b10e6 82%),#071017f2;
+  display:grid;place-items:center;z-index:10;
+}
 .screen.hidden{display:none}
-.card{width:min(600px,92vw);border-left:3px solid var(--cyan);padding:12px 34px 30px;max-height:92vh;overflow-y:auto}
+.card{
+  width:min(580px,92vw);border-left:3px solid var(--cyan);padding:14px 28px 24px;
+  max-height:92vh;overflow-y:auto;background:rgba(8,18,25,.95);border:1px solid #2b464d;
+  border-left:3px solid var(--cyan);
+}
 .kicker{font:11px 'JetBrains Mono';letter-spacing:.25em;color:var(--cyan)}
-h1{font-size:72px;line-height:.82;margin:14px 0 12px;letter-spacing:.02em}
+h1{font-size:64px;line-height:.85;margin:12px 0 10px;letter-spacing:.02em}
 h1 em{color:var(--red);font-style:normal}
-h2{font-size:40px;margin:8px 0 14px;letter-spacing:.04em}
-.card p{color:#9db7bd;line-height:1.55;font:13px 'JetBrains Mono'}
-.btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
-.start{padding:14px 26px;color:#071017;background:var(--cyan);border:0;font:700 15px 'Barlow Condensed';letter-spacing:.18em;cursor:pointer}
-.start:hover{box-shadow:0 0 25px #7cf8ff66}
+h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
+.card p{color:#9db7bd;line-height:1.5;font:12px 'JetBrains Mono'}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.start{
+  padding:12px 22px;color:#071017;background:var(--cyan);border:0;
+  font:700 14px 'Barlow Condensed';letter-spacing:.16em;cursor:pointer;
+}
+.start:hover{box-shadow:0 0 20px #7cf8ff66}
 .start.ghost{background:transparent;border:1px solid #425d63;color:#dffcff}
 .start.ghost:hover{border-color:var(--cyan)}
 .start:disabled{opacity:.35;cursor:not-allowed;box-shadow:none}
-.menuBest{margin-top:16px;font:12px 'JetBrains Mono';color:var(--amber);letter-spacing:.1em}
-.controls{margin-top:14px;font:11px 'JetBrains Mono';color:#7d99a0;line-height:1.9;letter-spacing:.05em}
+.menuBest{margin-top:14px;font:11px 'JetBrains Mono';color:var(--amber);letter-spacing:.08em}
+.controls{margin-top:12px;font:10px 'JetBrains Mono';color:#7d99a0;line-height:1.8}
 .controls b{color:#dffcff}
 .scan{position:absolute;left:0;right:0;height:1px;background:#7cf8ff22;animation:scan 4s linear infinite;pointer-events:none}
 @keyframes scan{from{top:0}to{top:100%}}
-.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0}
-.stat{background:#0c1b23;border:1px solid #2b464d;padding:10px 14px;font:11px 'JetBrains Mono';color:#9bb8be;letter-spacing:.1em}
-.stat b{display:block;font-size:24px;color:#fff;margin-top:2px}
-#newBestTag{display:none;color:var(--amber);font:700 16px 'JetBrains Mono';letter-spacing:.15em;margin-top:6px;text-shadow:0 0 14px #ffb84c88}
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:14px 0}
+.stat{background:#0c1b23;border:1px solid #2b464d;padding:8px 12px;font:10px 'JetBrains Mono';color:#9bb8be}
+.stat b{display:block;font-size:22px;color:#fff;margin-top:2px}
+#newBestTag{display:none;color:var(--amber);font:700 15px 'JetBrains Mono';letter-spacing:.12em;margin-top:6px;text-shadow:0 0 12px #ffb84c88}
 /* settings */
-.setrow{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:12px 0;font:12px 'JetBrains Mono';color:#b7ced1}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0;font:11px 'JetBrains Mono';color:#b7ced1}
 .setrow input[type=range]{flex:1;accent-color:var(--cyan)}
-.setrow select{background:#0c1b23;color:#dffcff;border:1px solid #425d63;font:12px 'JetBrains Mono';padding:6px 10px}
-.setrow b{color:#fff;min-width:44px;text-align:right}
+.setrow select{background:#0c1b23;color:#dffcff;border:1px solid #425d63;font:11px 'JetBrains Mono';padding:5px 8px}
+.setrow b{color:#fff;min-width:40px;text-align:right}
 /* shop */
-.shopitem{display:flex;align-items:center;gap:12px;background:#0c1b23;border:1px solid #2b464d;padding:10px 14px;margin:8px 0}
+.shopitem{display:flex;align-items:center;gap:10px;background:#0c1b23;border:1px solid #2b464d;padding:8px 12px;margin:6px 0}
 .shopitem .info{flex:1}
-.shopitem h4{margin:0;font-size:17px;letter-spacing:.06em}
-.shopitem p{margin:2px 0 0;font-size:11px}
-.shopitem .lvl{font:11px 'JetBrains Mono';color:var(--cyan)}
-.buy{background:var(--amber);border:0;color:#1a1005;font:700 13px 'Barlow Condensed';letter-spacing:.1em;padding:9px 16px;cursor:pointer;white-space:nowrap}
-.buy:hover:not(:disabled){box-shadow:0 0 16px #ffb84c66}
+.shopitem h4{margin:0;font-size:15px;letter-spacing:.05em}
+.shopitem p{margin:2px 0 0;font-size:10px}
+.buy{background:var(--amber);border:0;color:#1a1005;font:700 12px 'Barlow Condensed';letter-spacing:.08em;padding:8px 14px;cursor:pointer}
+.buy:hover:not(:disabled){box-shadow:0 0 14px #ffb84c66}
 .buy:disabled{opacity:.35;cursor:not-allowed}
-#shopScore{font:700 18px 'JetBrains Mono';color:var(--amber)}
-.pips{color:var(--cyan);letter-spacing:2px;font-size:12px}
+#shopScore{font:700 16px 'JetBrains Mono';color:var(--amber)}
+.pips{color:var(--cyan);letter-spacing:2px;font-size:11px}
 /* help table */
-.keys{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font:12px 'JetBrains Mono';color:#9db7bd;margin-top:10px}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font:11px 'JetBrains Mono';color:#9db7bd;margin-top:8px}
 .keys b{color:var(--cyan)}
 #errbox{position:fixed;left:8px;bottom:8px;z-index:99;max-width:60vw;max-height:30vh;overflow:auto;background:#2a0d14ee;border:1px solid var(--red);color:#ffd7de;font:11px 'JetBrains Mono';padding:8px 12px;display:none;white-space:pre-wrap}
-@media(max-width:900px){.left{max-width:200px}.wave{font-size:38px}.actions .action{min-width:100px}h1{font-size:52px}.midbars{min-width:150px}}
+
+/* MEDIA QUERIES PARA PANTALLAS PEQUEÑAS / MÓVILES */
+@media(max-width:860px), (pointer:coarse) {
+  #touchControls{display:block !important}
+  .actions{display:none} /* En móviles usamos los botones táctiles dedicados */
+  .topbar{padding:0 10px;height:38px}
+  .brand{font-size:14px}
+  .brand small{display:none}
+  .bottom{left:10px;right:10px;bottom:8px}
+  .midbars{min-width:130px}
+  .tactical-left{left:10px;top:44px}
+  .tactical-right{right:10px;top:44px}
+  h1{font-size:46px}
+  .scope-bezel{width:86vmin;height:86vmin}
+  .scope-reticle{width:86vmin;height:86vmin}
+  .scope-blur-layer{
+    mask-image:radial-gradient(circle at center, transparent 0, transparent 40vmin, black 44vmin, black 100%);
+    -webkit-mask-image:radial-gradient(circle at center, transparent 0, transparent 40vmin, black 44vmin, black 100%);
+  }
+}
 </style>
 </head>
 <body>
 <div id="game"></div>
-<div id="hud">
-  <div id="vignette"></div>
-  <div class="topbar">
-    <div class="brand">FRONTERA <small>DEAD TIDE / SECTOR 07</small></div>
-    <div class="status">
-      <span>PUNTOS <b id="scoreVal">0</b></span>
-      <span>RÉCORD <b id="bestVal">0</b></span>
-      <span class="badge">● EN LÍNEA</span>
-      <span>FPS <b id="fps">60</b></span>
-      <button class="iconbtn" id="btnMute" title="Silenciar (M)">♪</button>
-      <button class="iconbtn" id="btnPause" title="Pausa (P)">II</button>
-    </div>
-  </div>
-  <div id="bossbar"><div id="bossName">⚠ JEFE DE OLEADA ⚠</div><div id="bossTrack"><div id="bossFill"></div></div></div>
-  <div class="left">
-    <div class="wave-label">AMENAZA ACTIVA</div>
-    <div class="wave">OLEADA <span id="waveVal">01</span></div>
-    <div class="objective">PROTOCOLO: <strong>DEFENDER LA VALLA</strong><br><span id="remainVal">0</span> firmas hostiles detectadas</div>
-    <div id="objList"></div>
-  </div>
-  <div class="right">
-    <div class="threat">NIVEL DE AMENAZA <b id="threatVal">0</b>%</div>
-    <div class="meter"><i id="threatFill"></i></div>
-    <div id="streak"></div><div id="mult"></div>
-  </div>
-  <div id="crosshair"><div class="ring"></div><i class="ch t"></i><i class="ch b"></i><i class="ch l"></i><i class="ch r"></i><i class="dot"></i></div>
-  <div id="hitmarker"></div>
-  <div class="hint" id="hint">CLICK DISPARA · RMB / ESPACIO ZOOM · 1-4 ARMAS · Q MUNICIÓN · R RECARGA · F REPARAR · B MEJORAS</div>
-  <div class="toast" id="toast"></div>
-  <div id="radio"><b>◉ RADIO:</b> <span id="radioText"></span></div>
-  <div id="popups"></div>
-  <div class="damage" id="dmg"></div><div id="lowhp"></div><div class="flash" id="flash"></div>
-  <div id="interBar"><span id="interText">OLEADA COMPLETADA</span><button id="btnNextWave">DESPLEGAR OLEADA →</button></div>
-  <div class="bottom">
-    <div class="weapon">
-      <div class="weapon-icon" id="weaponIcon">⌁</div>
-      <div>
-        <h3 id="weaponName">MAUSER // SR-98K</h3>
-        <p id="weaponDesc">7.62 AP · <span id="zoomText">ZOOM 1.0×</span> · <span id="specVal">NORMAL</span></p>
-        <div id="slots"></div>
-      </div>
-      <div class="ammo"><span id="ammoVal">07</span><small> / <span id="ammoMax">07</span></small><div id="reloadWrap"><div id="reloadFill"></div></div></div>
-    </div>
-    <div class="midbars">
-      <div class="bar-row"><span>VALLA</span><div class="bar"><i id="fenceFill"></i></div><b id="fenceText">100</b></div>
-      <div class="bar-row"><span>SALUD</span><div class="bar"><i id="hpFill"></i></div><b id="hpText">100</b></div>
-      <div id="civs">CIVILES: <b id="civVal">0</b> · SOLDADOS: <b id="solVal">0</b></div>
-    </div>
-    <div class="actions">
-      <button class="action hot" id="btnStrike" disabled><strong>✦ ATAQUE AÉREO</strong><span id="strikeText">DESBLOQUEA EN OLEADA 3</span></button>
-      <button class="action" id="btnRepair"><strong>⛨ REPARAR VALLA</strong><span>TECLA F · 120 PTS</span></button>
-      <button class="action" id="btnShop"><strong>▲ MEJORAS</strong><span>TECLA B</span></button>
+
+<!-- MIRA TELESCÓPICA CON DESENFOQUE PERIFÉRICO -->
+<div id="scopeView" class="hidden">
+  <div class="scope-blur-layer"></div>
+  <div class="scope-bezel"></div>
+  <div class="scope-reticle">
+    <div class="scope-line-h"></div>
+    <div class="scope-line-v"></div>
+    <div class="scope-center-dot"></div>
+    <div class="scope-circle-inner"></div>
+    <div class="scope-mils"></div>
+    <div class="scope-hud-readout">
+      <span id="scopeRng">RNG: <b>-- M</b></span>
+      <span id="scopeTarget">BLANCO: <b>NINGUNO</b></span>
+      <span id="scopeMag">ZOOM: <b>4.5×</b></span>
     </div>
   </div>
 </div>
 
+<!-- HUD DE JUEGO MINIMALISTA -->
+<div id="hud">
+  <div id="vignette"></div>
+
+  <!-- Top bar ultra-slim -->
+  <div class="topbar hud-hide-scoped">
+    <div class="brand">FRONTERA <small>DEAD TIDE // SECTOR 07</small></div>
+    <div class="top-center">
+      <div id="bossbar">
+        <div id="bossName">⚠ JEFE DE OLEADA ⚠</div>
+        <div id="bossTrack"><div id="bossFill"></div></div>
+      </div>
+    </div>
+    <div class="status">
+      <span>PTS <b id="scoreVal">0</b></span>
+      <span>RÉCORD <b id="bestVal">0</b></span>
+      <span>FPS <b id="fps">60</b></span>
+      <button class="iconbtn" id="btnShopTop" title="Mejoras (B)">▲</button>
+      <button class="iconbtn" id="btnFullscreen" title="Pantalla completa">⛶</button>
+      <button class="iconbtn" id="btnMute" title="Silenciar (M)">♪</button>
+      <button class="iconbtn" id="btnPause" title="Pausa (P)">II</button>
+    </div>
+  </div>
+
+  <!-- Pastillas tácticas superiores izquierda / derecha -->
+  <div class="tactical-left hud-hide-scoped">
+    <div class="pill" id="wavePill">OLEADA <b id="waveVal">01</b> · <span id="remainVal">0</span> HOSTILES</div>
+    <div id="objList"></div>
+  </div>
+
+  <div class="tactical-right hud-hide-scoped">
+    <div class="pill">AMENAZA <b id="threatVal">0</b>%</div>
+    <div class="threat-meter"><i id="threatFill"></i></div>
+    <div id="streak"></div>
+  </div>
+
+  <!-- Retícula de cadera / Hitmarker -->
+  <div id="crosshair"><div class="ring"></div><i class="ch t"></i><i class="ch b"></i><i class="ch l"></i><i class="ch r"></i><i class="dot"></i></div>
+  <div id="hitmarker"></div>
+
+  <!-- Notificaciones y Radio -->
+  <div class="toast" id="toast"></div>
+  <div id="radio"><b>◉ RADIO:</b> <span id="radioText"></span></div>
+  <div id="popups"></div>
+  <div class="damage" id="dmg"></div><div id="lowhp"></div><div class="flash" id="flash"></div>
+
+  <!-- Intermisión -->
+  <div id="interBar"><span id="interText">OLEADA SUPERADA</span><button id="btnNextWave">SIGUIENTE OLEADA →</button></div>
+
+  <!-- Barra inferior minimalista -->
+  <div class="bottom">
+    <div class="hud-panel weapon-hud">
+      <div class="weapon-icon" id="weaponIcon">⌁</div>
+      <div class="weapon-info">
+        <h3 id="weaponName">MAUSER // SR-98K</h3>
+        <p><span id="zoomText">ZOOM 1.0×</span> · <span id="specVal">NORMAL</span></p>
+        <div id="slots"></div>
+      </div>
+      <div class="ammo-box">
+        <div class="ammo"><span id="ammoVal">07</span><small>/<span id="ammoMax">07</span></small></div>
+        <div id="reloadWrap"><div id="reloadFill"></div></div>
+      </div>
+    </div>
+
+    <div class="hud-panel midbars hud-hide-scoped">
+      <div class="bar-row"><span>VALLA</span><div class="bar"><i id="fenceFill"></i></div><b id="fenceText">100</b></div>
+      <div class="bar-row"><span>SALUD</span><div class="bar"><i id="hpFill"></i></div><b id="hpText">100</b></div>
+      <div class="turret-badge"><span>AMETRALLADORAS:</span><b id="turretStatus">0 / 4</b></div>
+    </div>
+
+    <!-- Botones de acción para PC / pantalla ancha -->
+    <div class="actions hud-hide-scoped">
+      <button class="action" id="btnTurret"><strong>⚙ AMETRALLADORA</strong><span id="turretHint">TECLA E · <b id="turretCountVal">0</b>/4</span></button>
+      <button class="action" id="btnRepair"><strong>⛨ REPARAR VALLA</strong><span>TECLA F · 120 PTS</span></button>
+      <button class="action hot" id="btnStrike" disabled><strong>✦ ATAQUE AÉREO</strong><span id="strikeText">OLEADA 3</span></button>
+      <button class="action" id="btnShop"><strong>▲ MEJORAS</strong><span>TECLA B</span></button>
+    </div>
+  </div>
+
+  <!-- Capa de controles táctiles adaptativos para Android / Móviles -->
+  <div id="touchControls">
+    <div id="touchAimPad"></div>
+
+    <div class="touch-action-bar hud-hide-scoped">
+      <button class="tbtn-pill hot" id="btnTouchTurret">⚙ TORRETA (<span id="touchTurretCount">0</span>/4)</button>
+      <button class="tbtn-pill" id="btnTouchRepair">⛨ REPARAR</button>
+      <button class="tbtn-pill" id="btnTouchStrike">✦ APOYO</button>
+      <button class="tbtn-pill" id="btnTouchAmmo">⚡ MUNICIÓN</button>
+    </div>
+
+    <div class="touch-right-cluster">
+      <div class="tbtn tbtn-reload" id="btnTouchReload">RECARGA</div>
+      <div class="tbtn tbtn-scope" id="btnTouchScope">MIRA</div>
+      <div class="tbtn tbtn-fire" id="btnTouchFire">FUEGO</div>
+    </div>
+  </div>
+</div>
+
+<!-- PANTALLAS MODALES -->
 <div class="screen" id="menu"><div class="scan"></div>
   <div class="card">
     <div class="kicker">FRONTERA // DEFENSE NETWORK</div>
     <h1>DEAD <em>TIDE</em></h1>
-    <p>La costa ha caído. Mantén la línea, elimina a los infectados y no dejes que crucen la valla. Nuevos tipos de hostiles detectados: corredores, blindados, explosivos, trepadores… y algo más grande.</p>
+    <p>Posición de francotirador establecida en la torre de vigilancia costera. Protege la valla fronteriza a larga distancia. Despliega hasta 4 ametralladoras autónomas cuando la horda empiece a sobrepasarte.</p>
     <div class="btnrow">
       <button class="start" id="btnStart">INICIAR OPERACIÓN →</button>
       <button class="start ghost" id="btnContinue" disabled>CONTINUAR</button>
@@ -231,7 +545,7 @@ h2{font-size:40px;margin:8px 0 14px;letter-spacing:.04em}
       <button class="start ghost" id="btnHelp">CONTROLES</button>
     </div>
     <div class="menuBest" id="menuBest">RÉCORD LOCAL: 0 PTS</div>
-    <div class="controls"><b>CLICK</b> disparar · <b>RMB/ESPACIO</b> zoom · <b>1-4</b> armas · <b>Q</b> munición especial · <b>R</b> recargar · <b>F</b> reparar valla · <b>B</b> mejoras · <b>P</b> pausa</div>
+    <div class="controls"><b>PC:</b> Ratón apunta · Click dispara · RMB/Espacio zoom telescópico · <b>E</b> torreta autónoma (hasta 4) · <b>R</b> recarga · <b>F</b> repara · <b>B</b> mejoras<br><b>Android:</b> Arrastra para apuntar · Botón MIRA con zoom y desenfoque · Botón FUEGO · Botón TORRETA</div>
   </div>
 </div>
 
@@ -286,20 +600,19 @@ h2{font-size:40px;margin:8px 0 14px;letter-spacing:.04em}
 </div>
 
 <div class="screen hidden" id="helpMenu">
-  <div class="card"><div class="kicker">MANUAL DE CAMPO</div><h2>CONTROLES</h2>
+  <div class="card"><div class="kicker">MANUAL DE COMBATE ADAPTATIVO</div><h2>CONTROLES PC & ANDROID</h2>
     <div class="keys">
-      <b>RATÓN</b><span>Mover puntería (torreta fija)</span>
-      <b>CLICK IZQ.</b><span>Disparar arma actual</span>
-      <b>CLICK DER. / ESPACIO</b><span>Mantener: zoom de precisión</span>
-      <b>1 / 2 / 3 / 4</b><span>Rifle · Pistola · Lanzagranadas · Misiles guiados</span>
-      <b>RUEDA</b><span>Cambiar de arma</span>
-      <b>Q</b><span>Munición: normal → incendiaria → eléctrica (rifle/pistola)</span>
-      <b>R</b><span>Recargar</span>
-      <b>F</b><span>Reparar valla (120 pts)</span>
-      <b>B</b><span>Tienda de mejoras</span>
-      <b>T</b><span>Ataque aéreo (oleada 3+)</span>
-      <b>ENTER</b><span>Desplegar siguiente oleada</span>
-      <b>P / ESC</b><span>Pausa</span>
+      <b>RATÓN / ARRASTRE</b><span>Apuntar suavemente desde la torre elevada</span>
+      <b>CLICK IZQ / BOTÓN FUEGO</b><span>Disparar arma seleccionada</span>
+      <b>CLICK DER / ESPACIO / BOTÓN MIRA</b><span>Activar mira telescópica con zoom y desenfoque periférico</span>
+      <b>E / C / BOTÓN TORRETA</b><span>Colocar ametralladora autónoma (hasta 4 en el perímetro)</span>
+      <b>1 / 2 / 3 / 4 / RANURAS</b><span>Cambiar de arma (Rifle, Pistola, Lanzagranadas, Misiles)</span>
+      <b>Q / BOTÓN MUNICIÓN</b><span>Alternar munición especial (Normal / Incendiaria / Eléctrica)</span>
+      <b>R / BOTÓN RECARGA</b><span>Recargar arma</span>
+      <b>F / BOTÓN REPARAR</b><span>Reparar valla defensiva (120 pts)</span>
+      <b>T / BOTÓN APOYO</b><span>Solicitar ataque aéreo de helicóptero (Oleada 3+)</span>
+      <b>B</b><span>Tienda de mejoras tácticas</span>
+      <b>P / ESC</b><span>Pausar partida</span>
       <b>M</b><span>Silenciar audio</span>
     </div>
     <div class="btnrow"><button class="start" id="btnCloseHelp">VOLVER →</button></div>
