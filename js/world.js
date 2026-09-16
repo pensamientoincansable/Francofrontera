@@ -34,6 +34,19 @@ export const SNIPER_EYE = Object.freeze({ x: 0, y: 13.95, z: 32.0 });
 export const PARAPET_TOP = 13.14;
 export const PARAPET_Z = 31.05;
 
+// ---------- GEOGRAFÍA DEL SECTOR COSTERO ----------
+// El mar queda a la IZQUIERDA (oeste, x < SHORE_X). La playa/orilla corre de norte a
+// sur sobre x = SHORE_X. Las vallas bloquean el corredor terrestre (FENCE_X0..FENCE_X1)
+// en 3 capas de profundidad; el flanco marítimo queda abierto para el asalto en lancha.
+export const SHORE_X = -12;
+export const FENCE_ZS = Object.freeze([-14, -7, -1]); // exterior → interior
+export const FENCE_X0 = -10;
+export const FENCE_X1 = 31;
+export const FENCE_LABELS = Object.freeze(['EXTERIOR', 'MEDIA', 'INTERIOR']);
+// Tiempos del asalto anfibio: 3 s para poner la lancha + 2 s para salir de la orilla.
+export const BOAT_DEPLOY_TIME = 3.0;
+export const BOAT_LAUNCH_TIME = 2.0;
+
 export class World {
   constructor(scene, camera, renderer) {
     this.scene = scene; this.camera = camera; this.renderer = renderer;
@@ -89,96 +102,171 @@ export class World {
     this.scene.add(this.stars);
   }
 
-  // ---------- terreno: agua animada + arena ----------
+  // ---------- terreno: mar a la izquierda + playa + orilla ----------
   buildTerrain() {
-    this.waterGeo = new THREE.PlaneGeometry(320, 300, 48, 48);
+    // MAR (oeste): plano de agua animada a la izquierda de la orilla.
+    this.waterGeo = new THREE.PlaneGeometry(160, 340, 40, 56);
     this.waterGeo.rotateX(-Math.PI / 2);
     this.waterBase = this.waterGeo.attributes.position.array.slice();
     this.water = new THREE.Mesh(this.waterGeo, new THREE.MeshPhongMaterial({
       color: 0x0a343c, shininess: 110, transparent: true, opacity: 0.93
     }));
-    this.water.position.set(0, -0.15, -45);
+    // x: -172..-12 (borde este justo en la orilla), z: -180..160
+    this.water.position.set(SHORE_X - 80, -0.15, -10);
     this.scene.add(this.water);
+    // Fondo marino bajo el agua para dar profundidad
+    this.seabed = new THREE.Mesh(
+      new THREE.PlaneGeometry(160, 340),
+      new THREE.MeshStandardMaterial({ color: 0x3a4a44, roughness: 1 })
+    );
+    this.seabed.rotation.x = -Math.PI / 2;
+    this.seabed.position.set(SHORE_X - 80, -0.9, -10);
+    this.scene.add(this.seabed);
+    // TIERRA (este): arena que cubre todo el corredor terrestre y bajo la torre.
     this.sand = new THREE.Mesh(
-      new THREE.PlaneGeometry(240, 110),
+      new THREE.PlaneGeometry(150, 340),
       new THREE.MeshStandardMaterial({ color: 0x8e7757, roughness: 1 })
     );
     this.sand.rotation.x = -Math.PI / 2;
-    this.sand.position.set(0, 0, 18);
+    // x: -12..138, z: -180..160
+    this.sand.position.set(SHORE_X + 75, 0, -10);
     this.sand.receiveShadow = true;
     this.scene.add(this.sand);
-    // rocas lejanas
+    // Franja de arena húmeda en la orilla (marca visual de la línea de costa)
+    this.wetSand = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.2, 340),
+      new THREE.MeshStandardMaterial({ color: 0x6b5c40, roughness: 1 })
+    );
+    this.wetSand.rotation.x = -Math.PI / 2;
+    this.wetSand.position.set(SHORE_X + 1.6, 0.02, -10);
+    this.wetSand.receiveShadow = true;
+    this.scene.add(this.wetSand);
+    // Línea de espuma animada justo en el borde del agua
+    this.foamMat = new THREE.MeshBasicMaterial({ color: 0xd8f4f0, transparent: true, opacity: 0.55 });
+    this.foam = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 340), this.foamMat);
+    this.foam.rotation.x = -Math.PI / 2;
+    this.foam.position.set(SHORE_X - 0.4, 0.06, -10);
+    this.scene.add(this.foam);
+    // Rocas: escollos en el mar + peñascos en tierra firme (lejos del campo de tiro)
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x1c3536, roughness: 0.95 });
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < 10; i++) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(2 + Math.random() * 4, 0.8 + Math.random() * 2.2, 2 + Math.random() * 3), rockMat);
+      m.position.set(-46 + Math.random() * 28, 0.2, -40 + Math.random() * 70);
+      m.castShadow = true;
+      this.scene.add(m);
+    }
+    for (let i = 0; i < 8; i++) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(3 + Math.random() * 5, 1 + Math.random() * 3, 3), rockMat);
-      m.position.set((i - 9) * 13 + Math.random() * 5, 0.5, -24 - Math.random() * 30);
+      m.position.set(44 + Math.random() * 30, 0.5, -40 + Math.random() * 60);
       m.castShadow = true;
       this.scene.add(m);
     }
   }
 
-  // ---------- valla destructible ----------
+  // ---------- vallas destructibles (3 capas en profundidad) ----------
   buildFence() {
     this.fence = new THREE.Group();
+    this.fenceLayers = []; // [{ z, label, posts: [], rails: [] }]
+    this.fencePosts = []; this.fenceRails = [];
     const metal = new THREE.MeshStandardMaterial({ color: 0x687b79, metalness: 0.7, roughness: 0.45 });
-    for (let x = -31; x <= 31; x += 3) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 5.8, 0.16), metal);
-      post.position.set(x, 2.9, -1);
-      post.castShadow = true;
-      this.fence.add(post);
-      this.fencePosts.push({
-        mesh: post, x, baseY: 2.9,
-        fallAt: 0.15 + Math.random() * 0.8,   // fracción de HP bajo la que cae
-        dir: Math.random() < 0.5 ? -1 : 1,
-        tilt: 0 // 0 vertical .. 1 caído
-      });
-    }
-    for (let y = 1.2; y < 5.5; y += 1.1) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(65, 0.09, 0.09), metal);
-      rail.position.set(0, y, -1);
-      this.fence.add(rail); this.fenceRails.push(rail);
-    }
     const wireMat = new THREE.MeshBasicMaterial({ color: 0xb3c3b8 });
-    for (let x = -30; x < 30; x += 2.1) {
-      const wire = new THREE.Mesh(new THREE.BoxGeometry(0.035, 5.5, 0.035), wireMat);
-      wire.position.set(x, 2.8, -1.12);
-      wire.rotation.z = 0.1;
-      this.fence.add(wire);
-    }
+    const fenceW = FENCE_X1 - FENCE_X0;
+    const fenceCX = (FENCE_X0 + FENCE_X1) / 2;
+    FENCE_ZS.forEach((fz, li) => {
+      const layer = { z: fz, label: FENCE_LABELS[li], posts: [], rails: [] };
+      for (let x = FENCE_X0; x <= FENCE_X1 + 0.01; x += 3) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 5.8, 0.16), metal);
+        post.position.set(x, 2.9, fz);
+        post.castShadow = true;
+        this.fence.add(post);
+        const rec = {
+          mesh: post, x, baseY: 2.9, layer: li,
+          fallAt: 0.15 + Math.random() * 0.8,   // fracción de HP bajo la que cae
+          dir: Math.random() < 0.5 ? -1 : 1,
+          tilt: 0 // 0 vertical .. 1 caído
+        };
+        layer.posts.push(rec);
+        this.fencePosts.push(rec);
+      }
+      for (let y = 1.2; y < 5.5; y += 1.1) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(fenceW + 2, 0.09, 0.09), metal);
+        rail.position.set(fenceCX, y, fz);
+        this.fence.add(rail);
+        layer.rails.push(rail); this.fenceRails.push(rail);
+      }
+      for (let x = FENCE_X0; x < FENCE_X1; x += 2.1) {
+        const wire = new THREE.Mesh(new THREE.BoxGeometry(0.035, 5.5, 0.035), wireMat);
+        wire.position.set(x, 2.8, fz - 0.12);
+        wire.rotation.z = 0.1;
+        this.fence.add(wire);
+      }
+      this.fenceLayers.push(layer);
+    });
     this.scene.add(this.fence);
-    // farolas y focos de perímetro para iluminar a los zombis
-    for (let x = -28; x <= 28; x += 7) {
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffe290 });
-      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), mat);
-      lamp.position.set(x, 6, -1);
-      this.scene.add(lamp); this.lampMats.push(mat);
-      const l = new THREE.PointLight(0xffbf60, 2.5, 14, 1.4);
-      l.position.copy(lamp.position);
-      this.scene.add(l); this.lampLights.push(l);
+    // Farolas de perímetro: 3 por capa para no saturar de luces (mismo total que antes)
+    for (const fz of FENCE_ZS) {
+      for (const x of [-6, 8, 22]) {
+        const mat = new THREE.MeshBasicMaterial({ color: 0xffe290 });
+        const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), mat);
+        lamp.position.set(x, 6, fz);
+        this.scene.add(lamp); this.lampMats.push(mat);
+        const l = new THREE.PointLight(0xffbf60, 2.5, 15, 1.4);
+        l.position.copy(lamp.position);
+        this.scene.add(l); this.lampLights.push(l);
+      }
     }
-    // Focos potentes de vigilancia apuntando hacia el área de aproximación (z = -15)
-    for (const fx of [-21, -7, 7, 21]) {
-      const spot = new THREE.SpotLight(0xfff3d0, 4.5, 42, 0.75, 0.45, 1.2);
-      spot.position.set(fx, 6.2, -1);
-      const spotTgt = new THREE.Object3D();
-      spotTgt.position.set(fx * 0.9, 0, -16);
-      this.scene.add(spotTgt);
-      spot.target = spotTgt;
-      this.scene.add(spot);
-      this.lampLights.push(spot);
+    // Focos potentes de vigilancia: 2 por capa hacia su área de aproximación
+    FENCE_ZS.forEach((fz) => {
+      for (const fx of [-4, 16]) {
+        const spot = new THREE.SpotLight(0xfff3d0, 4.5, 44, 0.75, 0.45, 1.2);
+        spot.position.set(fx, 6.2, fz);
+        const spotTgt = new THREE.Object3D();
+        spotTgt.position.set(fx * 0.9, 0, fz - 13);
+        this.scene.add(spotTgt);
+        spot.target = spotTgt;
+        this.scene.add(spot);
+        this.lampLights.push(spot);
+      }
+    });
+    // Baliza luminosa en el extremo marítimo de cada capa (marca el flanco del mar)
+    for (const fz of FENCE_ZS) {
+      const buoyMat = new THREE.MeshBasicMaterial({ color: 0x36c8ff });
+      const buoy = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), buoyMat);
+      buoy.position.set(FENCE_X0 - 0.8, 0.6, fz);
+      this.scene.add(buoy);
+      this.lampMats.push(buoyMat);
     }
   }
   fenceVisual(frac) {
-    // inclina/derriba postes según integridad; se restauran al reparar
+    // Acepta un número (compatibilidad: se aplica a las 3 capas) o un array por capa.
+    const fracs = Array.isArray(frac) ? frac : [frac, frac, frac];
+    const layers = this.fenceLayers && this.fenceLayers.length ? this.fenceLayers : null;
+    if (layers) {
+      layers.forEach((layer, li) => {
+        const f = (fracs[li] !== undefined && fracs[li] !== null) ? fracs[li] : 1;
+        for (const p of layer.posts) {
+          const target = f >= 0.99 ? 0 : (f < p.fallAt ? 1 : (f < p.fallAt + 0.15 ? 0.45 : 0));
+          p.tilt += (target - p.tilt) * 0.06;
+          p.mesh.rotation.z = p.tilt * p.dir * 1.35;
+          p.mesh.rotation.x = p.tilt * 0.3;
+          p.mesh.position.y = p.baseY - p.tilt * 2.2;
+        }
+        const sag = (1 - f) * 0.5;
+        layer.rails.forEach((r, i) => { r.rotation.z = (i % 2 ? 1 : -1) * sag * 0.06; });
+      });
+      return;
+    }
+    // Fallback legado (una sola valla)
+    const f0 = fracs[0];
     for (const p of this.fencePosts) {
-      const target = frac < p.fallAt ? 1 : (frac < p.fallAt + 0.15 ? 0.45 : 0);
+      const target = f0 >= 0.99 ? 0 : (f0 < p.fallAt ? 1 : (f0 < p.fallAt + 0.15 ? 0.45 : 0));
       p.tilt += (target - p.tilt) * 0.06;
       p.mesh.rotation.z = p.tilt * p.dir * 1.35;
       p.mesh.rotation.x = p.tilt * 0.3;
       p.mesh.position.y = p.baseY - p.tilt * 2.2;
     }
-    const sag = (1 - frac) * 0.5;
-    this.fenceRails.forEach((r, i) => { r.position.y = r.position.y * 1; r.rotation.z = (i % 2 ? 1 : -1) * sag * 0.06; });
+    const sag = (1 - f0) * 0.5;
+    this.fenceRails.forEach((r, i) => { r.rotation.z = (i % 2 ? 1 : -1) * sag * 0.06; });
   }
 
   // ---------- props: sacos, barriles, nido de francotirador elevado, extracción ----------
@@ -188,17 +276,17 @@ export class World {
     const darkWood = new THREE.MeshStandardMaterial({ color: 0x3b2d1d, roughness: 0.9 });
     const camoMat = new THREE.MeshStandardMaterial({ color: 0x2b3b32, roughness: 0.8 });
 
-    // sacos defensivos en la valla
+    // sacos defensivos tras la valla interior (en tierra firme, nunca en el mar)
     for (let r = 0; r < 2; r++) for (let i = 0; i < 18; i++) {
       const s = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.7, 3, 6), sandMat);
       s.rotation.z = Math.PI / 2;
-      s.position.set(-14 + i * 1.15 + (r ? 0.5 : 0), 0.32 + r * 0.55, 3.2);
+      s.position.set(-8 + i * 1.15 + (r ? 0.5 : 0), 0.32 + r * 0.55, 3.2);
       s.castShadow = true;
       this.scene.add(s);
     }
     const barrelMat = new THREE.MeshStandardMaterial({ color: 0x3d5a44, roughness: 0.7, metalness: 0.3 });
     const barrelMat2 = new THREE.MeshStandardMaterial({ color: 0x6e4a2a, roughness: 0.7, metalness: 0.3 });
-    [[-16, 5], [-15.2, 5.6], [18, 4.6], [18.9, 5.1], [17.4, 5.8], [-4, 28], [4, 28], [-5, 36], [5, 36]].forEach(([x, z], i) => {
+    [[-8, 5], [-7.2, 5.6], [18, 4.6], [18.9, 5.1], [17.4, 5.8], [-4, 28], [4, 28], [-5, 36], [5, 36]].forEach(([x, z], i) => {
       const b = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.4, 10), i % 2 ? barrelMat2 : barrelMat);
       b.position.set(x, 0.7, z); b.castShadow = true;
       this.scene.add(b);
@@ -489,8 +577,26 @@ export class World {
     for (let i = 1; i < 4; i++) { this.weapons3d[i].visible = false; this.vm.add(this.weapons3d[i]); }
   }
   gunMetal(c, m, r) { return new THREE.MeshStandardMaterial({ color: c, metalness: (m !== undefined && m !== null) ? m : 0.75, roughness: (r !== undefined && r !== null) ? r : 0.35 }); }
+  useFallbackRifle() {
+    // Rifle procedural de respaldo (misma API que el GLTF: visible + muzzle)
+    if (this.weapons3d[0] && this.weapons3d[0] !== this.fallbackRifle) return; // GLTF ya cargado
+    this.weapons3d[0] = this.fallbackRifle;
+    this.fallbackRifle.visible = (this.curW === 0);
+    if (!this.muzzles[0]) {
+      const mz = new THREE.Object3D(); mz.position.set(0, 0.03, -0.95); this.fallbackRifle.add(mz);
+      this.muzzles[0] = mz;
+    }
+  }
   loadMauser() {
-    const loader = new GLTFLoader();
+    let loader;
+    try {
+      loader = new GLTFLoader();
+    } catch (e) {
+      console.warn('GLTFLoader no disponible, usando rifle procedural', e);
+      this.useFallbackRifle();
+      return;
+    }
+    try {
     loader.load('resources/gltf-Sniper/Mauser_98K.gltf', (gltf) => {
       const model = gltf.scene;
       // analizar geometría: normalizar escala y orientar el cañón (extremo fino) hacia -Z
@@ -528,12 +634,15 @@ export class World {
       const mz = new THREE.Object3D(); mz.position.set(0, 0.045, -1.05); wrap.add(mz);
       this.muzzles[0] = mz;
     }, undefined, () => {
-      // fallo de carga → rifle procedural
-      this.weapons3d[0] = this.fallbackRifle;
-      this.fallbackRifle.visible = (this.curW === 0);
-      const mz = new THREE.Object3D(); mz.position.set(0, 0.03, -0.95); this.fallbackRifle.add(mz);
-      this.muzzles[0] = mz;
+      // fallo de carga (404, file://, CDN bloqueado…) → rifle procedural
+      this.useFallbackRifle();
     });
+    } catch (e) {
+      // Throw síncrono (p. ej. URL relativa inválida fuera del navegador):
+      // usar el rifle procedural sin romper la construcción del mundo.
+      console.warn('No se pudo iniciar la carga del Mauser, usando rifle procedural', e);
+      this.useFallbackRifle();
+    }
   }
   buildFallbackRifle() {
     const g = new THREE.Group();
@@ -703,10 +812,17 @@ export class World {
     }
     p.needsUpdate = true;
     this.waterGeo.computeVertexNormals();
+    // Resaca: la espuma oscila sobre la orilla
+    if (this.foam) {
+      this.foam.position.x = SHORE_X - 0.4 + Math.sin(t * 1.1) * 0.5;
+      if (this.foamMat) this.foamMat.opacity = 0.45 + Math.sin(t * 1.1) * 0.12 + storm * 0.15;
+    }
   }
+  isSea(x) { return x < SHORE_X; }
   setQuality(q) {
-    if (q === 'high') { this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); this.renderer.shadowMap.enabled = true; }
-    else if (q === 'med') { this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); this.renderer.shadowMap.enabled = true; }
+    const dpr = (typeof devicePixelRatio !== 'undefined' && devicePixelRatio) ? devicePixelRatio : 1;
+    if (q === 'high') { this.renderer.setPixelRatio(Math.min(dpr, 2)); this.renderer.shadowMap.enabled = true; }
+    else if (q === 'med') { this.renderer.setPixelRatio(Math.min(dpr, 1.5)); this.renderer.shadowMap.enabled = true; }
     else { this.renderer.setPixelRatio(1); this.renderer.shadowMap.enabled = false; }
     this.sun.castShadow = (q !== 'low');
   }

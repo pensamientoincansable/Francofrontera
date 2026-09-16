@@ -268,7 +268,7 @@ canvas{display:block;touch-action:none}
 .bar-row{display:flex;align-items:center;gap:6px;font:9px 'JetBrains Mono';color:#9fb5b8;letter-spacing:.08em}
 .bar{flex:1;height:7px;background:#111b1e;border:1px solid #283e44}
 .bar i{display:block;height:100%;transition:width .2s}
-#fenceFill{background:linear-gradient(90deg,#ffb84c,#ffe1a8);box-shadow:0 0 6px #ffb84c66}
+#fenceFill,#fenceFill0,#fenceFill1,#fenceFill2{background:linear-gradient(90deg,#ffb84c,#ffe1a8);box-shadow:0 0 6px #ffb84c66}
 #hpFill{background:linear-gradient(90deg,#37e08b,#b6ffd6);box-shadow:0 0 6px #37e08b66}
 .turret-badge{
   font:10px 'JetBrains Mono';color:var(--cyan);letter-spacing:.06em;
@@ -523,7 +523,9 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
     </div>
 
     <div class="hud-panel midbars hud-hide-scoped">
-      <div class="bar-row"><span>VALLA</span><div class="bar"><i id="fenceFill"></i></div><b id="fenceText">100</b></div>
+      <div class="bar-row"><span>VLLA EXT</span><div class="bar"><i id="fenceFill0"></i></div><b id="fenceText0">100</b></div>
+      <div class="bar-row"><span>VLLA MED</span><div class="bar"><i id="fenceFill1"></i></div><b id="fenceText1">100</b></div>
+      <div class="bar-row"><span>VLLA INT</span><div class="bar"><i id="fenceFill2"></i></div><b id="fenceText2">100</b></div>
       <div class="bar-row"><span>SALUD</span><div class="bar"><i id="hpFill"></i></div><b id="hpText">100</b></div>
       <div class="turret-badge"><span>AMETRALLADORAS:</span><b id="turretStatus">0 / 4</b></div>
     </div>
@@ -531,7 +533,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
     <!-- Botones de acción para PC / pantalla ancha -->
     <div class="actions hud-hide-scoped">
       <button class="action" id="btnTurret"><strong>⚙ AMETRALLADORA</strong><span id="turretHint">TECLA E · <b id="turretCountVal">0</b>/4</span></button>
-      <button class="action" id="btnRepair"><strong>⛨ REPARAR VALLA</strong><span>TECLA F · 120 PTS</span></button>
+      <button class="action" id="btnRepair"><strong>⛨ REPARAR VALLAS</strong><span>TECLA F · 120 PTS · 3 CAPAS</span></button>
       <button class="action hot" id="btnStrike" disabled><strong>✦ ATAQUE AÉREO</strong><span id="strikeText">OLEADA 3</span></button>
       <button class="action" id="btnShop"><strong>▲ MEJORAS</strong><span>TECLA B</span></button>
     </div>
@@ -561,7 +563,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
   <div class="card">
     <div class="kicker">FRONTERA // DEFENSE NETWORK</div>
     <h1>DEAD <em>TIDE</em></h1>
-    <p>Posición de francotirador establecida en la torre de vigilancia costera. Protege la valla fronteriza a larga distancia. Despliega hasta 4 ametralladoras autónomas cuando la horda empiece a sobrepasarte.</p>
+    <p>Posición de francotirador en la torre costera. El mar queda a la izquierda: defiende las 3 vallas (exterior, media e interior), frena a los que trepan, a los que rompen y a los que desembarcan en lancha por el oeste (3 s botarla + 2 s salir). La mayoría porta armas cuerpo a cuerpo y lanza piedras.</p>
     <div class="btnrow">
       <button class="start" id="btnStart">INICIAR OPERACIÓN →</button>
       <button class="start ghost" id="btnContinue" disabled>CONTINUAR</button>
@@ -633,7 +635,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
       <b>1 / 2 / 3 / 4 / RANURAS</b><span>Cambiar de arma (Rifle, Pistola, Lanzagranadas, Misiles)</span>
       <b>Q / BOTÓN MUNICIÓN</b><span>Alternar munición especial (Normal / Incendiaria / Eléctrica)</span>
       <b>R / BOTÓN RECARGA</b><span>Recargar arma</span>
-      <b>F / BOTÓN REPARAR</b><span>Reparar valla defensiva (120 pts)</span>
+      <b>F / BOTÓN REPARAR</b><span>Reparar las 3 vallas defensivas (120 pts)</span>
       <b>T / BOTÓN APOYO</b><span>Solicitar ataque aéreo de helicóptero (Oleada 3+)</span>
       <b>B</b><span>Tienda de mejoras tácticas</span>
       <b>P / ESC</b><span>Pausar partida</span>

@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { AudioEngine } from './audio.js';
 import { FX } from './fx.js';
-import { World, SNIPER_EYE, PARAPET_TOP } from './world.js';
+import { World, SNIPER_EYE, PARAPET_TOP, SHORE_X, FENCE_ZS, FENCE_X0, FENCE_X1, FENCE_LABELS } from './world.js';
 import { Entities, ZTYPES } from './entities.js';
 
 const $ = id => document.getElementById(id);
@@ -25,7 +25,7 @@ const UPGRADES = [
   { id: 'reload', name: 'Manos rápidas',       desc: '−18% tiempo de recarga por nivel',     max: 3, base: 250 },
   { id: 'zoom',   name: 'Óptica de precisión', desc: 'Zoom telescópico: 4.5× → 6.5× → 9.0×', max: 2, base: 200 },
   { id: 'mag',    name: 'Cargadores amplios',  desc: '+30% capacidad por nivel',              max: 3, base: 200 },
-  { id: 'fence',  name: 'Blindaje de valla',   desc: '+25 integridad máxima y repara 25',    max: 3, base: 250 },
+  { id: 'fence',  name: 'Blindaje de vallas',  desc: '+25 integridad máx. por capa (×3) y repara 25', max: 3, base: 250 },
 ];
 const ZOOM_LVLS = [4.5, 6.5, 9.0];
 
@@ -36,7 +36,7 @@ const S = {
   curW: 0, spec: 'normal', specPool: { fire: 12, shock: 12 },
   wstate: WEAPONS.map(w => ({ ammo: w.mag, reloading: false, reloadT: 0, cd: 0 })),
   up: { dmg: 0, reload: 0, zoom: 0, mag: 0, fence: 0 },
-  fence: 100, fenceMax: 100, fenceAlive: true,
+  fences: FENCE_ZS.map((fz, i) => ({ z: fz, label: FENCE_LABELS[i], hp: 100, max: 100, alive: true })),
   hp: 100, lastHurt: -99,
   strikeCd: 0, strikeUnlocked: false,
   intermission: false, interT: 0,
@@ -62,6 +62,20 @@ function saveGame() {
 }
 function loadSave() { try { return JSON.parse(localStorage.getItem('frtd_save_v1') || 'null'); } catch (e) { return null; } }
 function clearSave() { try { localStorage.removeItem('frtd_save_v1'); } catch (e) {} }
+
+// ---------------- vallas (3 capas) ----------------
+function fenceMaxForUp() { return 100 + (S.up.fence | 0) * 25; }
+function resetFences() {
+  const m = fenceMaxForUp();
+  S.fences = FENCE_ZS.map((fz, i) => ({ z: fz, label: FENCE_LABELS[i], hp: m, max: m, alive: true }));
+}
+function fenceFrac(i) { const f = S.fences[i]; return f && f.alive ? f.hp / f.max : 0; }
+function fenceFracs() { return S.fences.map(f => (f.alive ? f.hp / f.max : 0)); }
+function fenceAvg() {
+  if (!S.fences.length) return 0;
+  return Math.round(S.fences.reduce((a, f) => a + (f.alive ? f.hp / f.max : 0), 0) / S.fences.length * 100);
+}
+function fencesAllFull() { return S.fences.every(f => f.alive && f.hp >= f.max); }
 
 // ---------------- three base ----------------
 const scene = new THREE.Scene();
@@ -93,19 +107,67 @@ const world = new World(scene, camera, renderer);
 
 // ---------------- entidades + hooks ----------------
 const ent = new Entities(scene, fx, {
-  fenceDamage(amount, pos) {
-    if (!S.playing || S.paused || !S.fenceAlive) return;
-    S.fence = Math.max(0, S.fence - amount);
-    fx.sparkHit(pos.clone().setY(2.5));
+  fenceDamage(amount, pos, fenceIndex) {
+    if (!S.playing || S.paused) return;
+    let idx = (fenceIndex !== undefined && fenceIndex !== null) ? fenceIndex : -1;
+    if (idx < 0 && pos) {
+      // Sin capa indicada: dañar la capa intacta más cercana al impacto
+      let bd = 1e9;
+      S.fences.forEach((f, i) => {
+        if (!f.alive) return;
+        const d = Math.abs(pos.z - f.z);
+        if (d < bd) { bd = d; idx = i; }
+      });
+    }
+    if (idx < 0 || !S.fences[idx] || !S.fences[idx].alive) return;
+    const F = S.fences[idx];
+    F.hp = Math.max(0, F.hp - amount);
+    if (pos) fx.sparkHit(pos.clone().setY(2.5));
     if (Math.random() < 0.5) audio.fenceHit();
-    if (S.fence <= 0 && S.fenceAlive) {
-      S.fenceAlive = false;
-      toast('⚠ LA VALLA HA CAÍDO ⚠');
-      radio('¡La valla ha caído! ¡Repárala con F o nos superan!', 'La valla ha caído. Repárala.');
+    if (F.hp <= 0 && F.alive) {
+      F.alive = false;
+      F.hp = 0;
+      const fallen = S.fences.filter(f => !f.alive).length;
+      if (fallen >= S.fences.length) {
+        toast('⚠ TODAS LAS VALLAS HAN CAÍDO ⚠');
+        radio('¡Todas las vallas han caído! ¡Repáralas con F o nos superan!', 'Todas las vallas han caído. Repáralas.');
+      } else {
+        toast(`⚠ VALLA ${F.label} DERRIBADA (${fallen}/${S.fences.length}) ⚠`);
+        radio(`¡La valla ${F.label.toLowerCase()} ha caído! Quedan ${S.fences.length - fallen} capas.`, `Valla ${F.label.toLowerCase()} caída.`);
+      }
       audio.alarm(); audio.siren(1);
-    } else if (S.fence < S.fenceMax * 0.3 && !S._warn30) {
-      S._warn30 = true;
-      radio('La valla está al treinta por ciento. Necesita reparación.', 'Valla al treinta por ciento.');
+    } else if (F.hp < F.max * 0.3 && !F._warned) {
+      F._warned = true;
+      radio(`La valla ${F.label.toLowerCase()} está al treinta por ciento. Necesita reparación.`, `Valla ${F.label.toLowerCase()} al treinta por ciento.`);
+    }
+    if (F.hp >= F.max * 0.35) F._warned = false;
+  },
+  stoneThrow() { if (S.playing && !S.paused && Math.random() < 0.5) audio.stoneThrow(); },
+  stoneHit(p, kind) {
+    if (!S.playing || S.paused) return;
+    audio.stoneHit();
+    if (kind === 'player') shake(0.06);
+  },
+  boatDeploy(z) {
+    if (!S.playing || S.paused) return;
+    audio.boatCreak();
+    if (S.time - (S._lastBoatAlert || -99) > 20) {
+      S._lastBoatAlert = S.time;
+      toast('⚠ LANCHA EN LA ORILLA · 3 s PARA BOTARLA ⚠');
+      radio('¡Están botando una lancha en la orilla oeste! ¡Húndelos antes de que salgan!', 'Lancha enemiga en la orilla.');
+    }
+  },
+  boatLaunch(z) {
+    if (!S.playing || S.paused) return;
+    audio.splash(false);
+    if (z && z.g && fx.splash) fx.splash(new THREE.Vector3(z.g.position.x, 0.2, z.g.position.z), 0.8);
+  },
+  seaLand(z) {
+    if (!S.playing || S.paused) return;
+    if (S.time - (S._lastLandAlert || -99) > 18) {
+      S._lastLandAlert = S.time;
+      toast('⚠ DESEMBARCO AL SUR · TRAS LAS VALLAS ⚠');
+      radio('¡Desembarco enemigo al sur, tras las vallas! ¡Cubrid el flanco de la torre!', 'Desembarco enemigo al sur.');
     }
   },
   playerDamage(amount) {
@@ -150,7 +212,7 @@ const ent = new Entities(scene, fx, {
   summon(boss) {
     audio.bossRoar();
     for (let i = 0; i < 2; i++) {
-      const m = ent.spawn('runner', clamp(boss.g.position.x + rand(-4, 4), -32, 32), boss.g.position.z - rand(1, 4));
+      const m = ent.spawn('runner', clamp(boss.g.position.x + rand(-4, 4), FENCE_X0, FENCE_X1), boss.g.position.z - rand(1, 4), { forceLand: true });
       fx.blood(m.g.position.clone().setY(1.4), false);
     }
     toast('EL JEFE INVOCA REFUERZOS');
@@ -251,7 +313,7 @@ function checkObjectives() {
     if (o.id === 'head') prog = S.headWave;
     else if (o.id === 'kill') prog = S.killsWave;
     else if (o.id === 'demo') prog = S.explosiveKills;
-    else if (o.id === 'guard') prog = Math.round(S.fence / S.fenceMax * 100);
+    else if (o.id === 'guard') prog = fenceAvg();
     else if (o.id === 'prot') prog = S.civsLostWave === 0 ? 1 : -1;
     o.prog = prog;
     let done = false;
@@ -272,7 +334,7 @@ function pickObjectives() {
     { id: 'head', label: 'HEADHUNTER', desc: 'bajas cabeza', need: 4 + S.wave, reward: 300 },
     { id: 'kill', label: 'EXTERMINADOR', desc: 'bajas totales', need: 10 + S.wave * 2, reward: 200 },
     { id: 'demo', label: 'DEMOLEDOR', desc: 'bajas explosivos', need: 4, reward: 300 },
-    { id: 'guard', label: 'GUARDIÁN', desc: 'valla ≥60%', need: 60, reward: 250 },
+    { id: 'guard', label: 'GUARDIÁN', desc: 'vallas ≥60% (media)', need: 60, reward: 250 },
     { id: 'prot', label: 'PROTECTOR', desc: 'ningún civil caído', need: 1, reward: 350 },
   ];
   const shuffled = pool.sort(() => Math.random() - 0.5).slice(0, 2);
@@ -289,7 +351,7 @@ function renderObjectives() {
     let txt = o.done ? '✔ ' : '◈ ';
     txt += o.label + ': ' + o.desc;
     if (!o.done && o.id !== 'guard' && o.id !== 'prot') txt += ` (${Math.min(o.prog, o.need)}/${o.need})`;
-    if (!o.done && o.id === 'guard') txt += ` (${Math.round(S.fence / S.fenceMax * 100)}%)`;
+    if (!o.done && o.id === 'guard') txt += ` (${fenceAvg()}%)`;
     txt += `  +${o.reward}`;
     d.textContent = txt;
     el.appendChild(d);
@@ -324,7 +386,7 @@ function startWave(n) {
   S.intermission = false;
   const ib = $('interBar');
   if (ib) ib.style.display = 'none';
-  S._warn30 = false;
+  for (const f of S.fences) f._warned = false;
   S.headWave = 0; S.killsWave = 0; S.civsLostWave = 0; S.explosiveKills = 0;
   S.specPool.fire = 12 + n; S.specPool.shock = 12 + n;
   S.wstate.forEach((ws, i) => { ws.ammo = magSize(i); ws.reloading = false; });
@@ -345,8 +407,7 @@ function startWave(n) {
   }
   const nCiv = Math.min(1 + Math.floor(n / 3), 3);
   for (let i = 0; i < nCiv; i++) {
-    const side = (i % 2 === 0 ? -1 : 1);
-    ent.spawnCivilian(side * rand(18, 28), rand(-9, -4));
+    ent.spawnCivilian(rand(2, 24), rand(-12, -5));
   }
   S.pendingSpawns = waveComposition(n);
   S.spawnT = 0;
@@ -355,6 +416,13 @@ function startWave(n) {
   if (wv) wv.textContent = fmt(n);
   toast('OLEADA ' + fmt(n) + ' // CONTACTO');
   audio.siren(n % 5 === 0 ? 3 : 2);
+  if (n === 2) {
+    setTimeout(() => {
+      if (!S.playing) return;
+      toast('⚠ NUEVO: ASALTO ANFIBIO POR EL MAR (OESTE) ⚠');
+      radio('Atención: el enemigo bota lanchas por el flanco oeste. Tres segundos para botarlas, dos para salir. ¡Húndelos!', 'Asalto anfibio por el oeste.');
+    }, 3500);
+  }
   if (n % 5 === 0) {
     setTimeout(() => { if (S.playing) audio.bossRoar(); }, 1600);
     radio('Atención tirador: una abominación se acerca a la valla. Concentra el fuego.', 'Jefe detectado.');
@@ -366,7 +434,7 @@ function startWave(n) {
   updateHUD(); renderSlots();
 }
 function endWave() {
-  const fenceBonus = Math.round(S.fence / S.fenceMax * 100);
+  const fenceBonus = fenceAvg();
   let bonus = 100 + S.wave * 25;
   addScore(bonus, null, 'bonus');
   for (const o of S.objectives) {
@@ -375,7 +443,7 @@ function endWave() {
     if (o.id === 'prot' && S.civsLostWave === 0) { o.done = true; addScore(o.reward, null, 'bonus'); toast('OBJETIVO: PROTECTOR // +' + o.reward); }
   }
   renderObjectives();
-  if (S.fenceAlive) S.fence = Math.min(S.fenceMax, S.fence + 15);
+  for (const f of S.fences) { if (f.alive) { f.hp = Math.min(f.max, f.hp + 15); if (f.hp >= f.max * 0.35) f._warned = false; } }
   S.hp = Math.min(100, S.hp + 25);
   S.intermission = true;
   S.interT = 16;
@@ -600,11 +668,14 @@ function resolveBullet(p) {
     hitmarker(p.head);
     ent.damage(z, p.dmg, { head: p.head, fire: p.spec === 'fire', electric: p.spec === 'shock', by: 'player' });
   } else {
-    fx.dirtBurst(p.to);
+    if (p.to.x < SHORE_X && fx.splash) fx.splash(p.to.clone().setY(0.15), 0.7);
+    else fx.dirtBurst(p.to);
   }
 }
 function explode(p, radius, dmg, opt) {
   opt = opt || {};
+  const inSea = p.x < SHORE_X;
+  if (inSea && fx.splash) fx.splash(p.clone().setY(0.2), radius > 5 ? 2.2 : 1.4);
   fx.explosion(p, radius > 5);
   audio.explosion(radius > 5);
   const dCam = p.distanceTo(camera.position);
@@ -620,8 +691,13 @@ function explode(p, radius, dmg, opt) {
       }
     }
   }
-  if (opt.fence && S.fenceAlive && Math.abs(p.z - (-1)) < radius) {
-    ent.hooks.fenceDamage(dmg * 0.9, p);
+  if (opt.fence) {
+    S.fences.forEach((f, i) => {
+      if (!f.alive) return;
+      if (Math.abs(p.z - f.z) < radius && p.x > FENCE_X0 - radius && p.x < FENCE_X1 + radius) {
+        ent.hooks.fenceDamage(dmg * 0.9, p, i);
+      }
+    });
   }
   if (opt.player && dCam < radius) {
     ent.hooks.playerDamage(Math.round(dmg * 0.5));
@@ -720,21 +796,29 @@ function cycleSpec() {
 function repairFence() {
   if (!S.playing || S.paused) return;
   const cost = 120;
-  if (S.fenceAlive && S.fence >= S.fenceMax) { toast('LA VALLA ESTÁ ÍNTEGRA'); return; }
+  if (fencesAllFull()) { toast('LAS VALLAS ESTÁN ÍNTEGRAS'); return; }
   if (S.score < cost) { audio.denied(); toast('PUNTOS INSUFICIENTES (120)'); return; }
   S.score -= cost;
-  if (!S.fenceAlive) {
-    S.fenceAlive = true;
-    S.fence = Math.round(S.fenceMax * 0.4);
-    toast('VALLA RECONSTRUIDA // 40%');
-    radio('Valla reconstruida parcialmente. Aguantará un tiempo.', 'Valla reconstruida.');
-  } else {
-    S.fence = Math.min(S.fenceMax, S.fence + 35);
-    toast('VALLA REPARADA // ' + Math.round(S.fence / S.fenceMax * 100) + '%');
+  const hadFallen = S.fences.some(f => !f.alive);
+  for (const f of S.fences) {
+    if (!f.alive) {
+      f.alive = true;
+      f.hp = Math.round(f.max * 0.4);
+    } else {
+      f.hp = Math.min(f.max, f.hp + 35);
+    }
+    if (f.hp >= f.max * 0.35) f._warned = false;
   }
-  S._warn30 = S.fence < S.fenceMax * 0.3;
+  if (hadFallen) {
+    toast('VALLAS RECONSTRUIDAS // MEDIA ' + fenceAvg() + '%');
+    radio('Vallas reconstruidas parcialmente. Aguantarán un tiempo.', 'Vallas reconstruidas.');
+  } else {
+    toast('VALLAS REPARADAS // MEDIA ' + fenceAvg() + '%');
+  }
   audio.repair();
-  for (let k = 0; k < 6; k++) fx.healSparkle(new THREE.Vector3(rand(-20, 20), rand(1, 4), -1));
+  for (const f of S.fences) {
+    for (let k = 0; k < 3; k++) fx.healSparkle(new THREE.Vector3(rand(FENCE_X0, FENCE_X1), rand(1, 4), f.z));
+  }
   updateHUD();
 }
 function callStrike() {
@@ -744,7 +828,7 @@ function callStrike() {
   if (!alive.length) { toast('SIN BLANCOS PARA EL ATAQUE AÉREO'); return; }
   for (const z of alive) c.add(z.g.position);
   c.divideScalar(alive.length);
-  const cx = clamp(c.x, -20, 20), cz = clamp(c.z, -24, -6);
+  const cx = clamp(c.x, -20, 20), cz = clamp(c.z, -24, 2);
   const ok = world.heliStrike(
     new THREE.Vector3(cx - 26, 0, cz), new THREE.Vector3(cx + 26, 0, cz), 7,
     (i, pos) => {
@@ -782,10 +866,17 @@ function updateHUD() {
   const zt = $('zoomText'), spv = $('specVal');
   if (zt) zt.textContent = 'ZOOM ' + (S.zoomed ? zl : '1.0') + '×';
   if (spv) spv.textContent = w.special ? ('MUN ' + SPEC_NAMES[S.spec] + (S.spec === 'normal' ? '' : ' ×' + S.specPool[S.spec])) : 'OJIVA HE';
-  const ff = S.fenceAlive ? S.fence / S.fenceMax : 0;
-  const fcf = $('fenceFill'), fct = $('fenceText'), hpf = $('hpFill'), hpt = $('hpText');
-  if (fcf) fcf.style.width = (ff * 100) + '%';
-  if (fct) fct.textContent = Math.round(ff * 100);
+  const fracs = fenceFracs();
+  S.fences.forEach((f, i) => {
+    const fill = $('fenceFill' + i), txt = $('fenceText' + i);
+    const pct = Math.round(fracs[i] * 100);
+    if (fill) {
+      fill.style.width = pct + '%';
+      fill.style.background = !f.alive ? '#ff5470' : (pct < 30 ? '#ff7b4d' : '');
+    }
+    if (txt) txt.textContent = f.alive ? pct : 'CAÍDA';
+  });
+  const hpf = $('hpFill'), hpt = $('hpText');
   if (hpf) hpf.style.width = S.hp + '%';
   if (hpt) hpt.textContent = Math.ceil(S.hp);
   const lhp = $('lowhp');
@@ -896,9 +987,12 @@ function buyUpgrade(u) {
   S.score -= cost;
   S.up[u.id]++;
   if (u.id === 'fence') {
-    S.fenceMax += 25;
-    S.fence = Math.min(S.fenceMax, S.fence + 25);
-    if (!S.fenceAlive && S.fence > 0) S.fenceAlive = true;
+    for (const f of S.fences) {
+      f.max += 25;
+      f.hp = Math.min(f.max, f.hp + 25);
+      if (!f.alive && f.hp > 0) f.alive = true;
+      if (f.hp >= f.max * 0.35) f._warned = false;
+    }
   }
   if (u.id === 'mag') S.wstate.forEach((ws, i) => { ws.ammo = Math.min(ws.ammo + 2, magSize(i)); });
   audio.buy();
@@ -915,16 +1009,18 @@ function resetRun() {
   Object.assign(S, {
     wave: 1, score: 0, kills: 0, headshots: 0, shots: 0, hits: 0,
     curW: 0, spec: 'normal', up: { dmg: 0, reload: 0, zoom: 0, mag: 0, fence: 0 },
-    fence: 100, fenceMax: 100, fenceAlive: true, hp: 100, lastHurt: -99,
+    hp: 100, lastHurt: -99,
     strikeCd: 0, strikeUnlocked: false, intermission: false, interT: 0,
     dayT: 0.08, storm: 0, stormState: 'calm', stormT: rand(40, 70), lightning: 0, nextBolt: 0,
     aim: { x: 0, y: 0 }, zoomed: false, firing: false, switchT: 0,
     trauma: 0, time: 0,
     killsTimes: [], streakBest: 0, explosiveKills: 0, headWave: 0, killsWave: 0, civsLostWave: 0,
     objectives: [], pendingSpawns: [], spawnT: 0,
-    _lastTurretAlert: 0, _lastSiegeAlert: 0, _warn30: false,
+    _lastTurretAlert: 0, _lastSiegeAlert: 0, _lastBoatAlert: -99, _lastLandAlert: -99,
   });
   S.specPool = { fire: 13, shock: 13 };
+  resetFences();
+  S._lastBoatAlert = -99; S._lastLandAlert = -99;
   S.wstate = WEAPONS.map(w => ({ ammo: w.mag, reloading: false, reloadT: 0, cd: 0 }));
   const rw = $('reloadWrap'), st = $('streak');
   if (rw) rw.style.display = 'none';
@@ -947,7 +1043,7 @@ function startGame(fresh) {
         S.wave = Math.max(1, sv.wave | 0) || 1; S.score = Math.max(0, sv.score | 0) || 0;
         S.kills = sv.kills | 0; S.headshots = sv.headshots | 0; S.shots = sv.shots | 0;
         if(sv.up && typeof sv.up === 'object') Object.assign(S.up, sv.up);
-        S.fenceMax = 100 + (S.up.fence|0) * 25; S.fence = S.fenceMax;
+        resetFences();
         if (S.wave >= 3) S.strikeUnlocked = true;
       }
     }
@@ -1358,9 +1454,10 @@ function updateStorm(dt) {
 }
 
 // ---------------- cámara / puntería desde la torre elevada ----------------
-// La valla está en z = -1; el ojo del tirador en SNIPER_EYE. Con esa separación la base
-// de la valla cae ~23° por debajo del horizonte, así que el encuadre neutro se inclina
-// hacia abajo (si no, el suelo quedaría fuera de cuadro y solo se vería cielo y parapeto).
+// La valla INTERIOR está en z = -1; el ojo del tirador en SNIPER_EYE. Con esa separación
+// la base de la valla cae ~23° por debajo del horizonte, así que el encuadre neutro se
+// inclina hacia abajo (si no, el suelo quedaría fuera de cuadro y solo se vería cielo y
+// parapeto). Las capas exterior (-14) y media (-7) quedan centradas en el mismo encuadre.
 const FENCE_Z = -1;
 const CAM_BASE_PITCH = -Math.atan2(SNIPER_EYE.y, SNIPER_EYE.z - FENCE_Z) * 0.72; // ≈ -16.5°
 const CAM_PITCH_MIN = -1.30, CAM_PITCH_MAX = 0.30;
@@ -1409,9 +1506,10 @@ function animate() {
         S.spawnT = 0.45;
         for (let k = 0; k < 3 && S.pendingSpawns.length && ent.aliveCount() < 32; k++) {
           const t = S.pendingSpawns.shift();
-          const x = rand(-30, 30) * (0.2 + Math.random() * 0.8);
           ent.wave = S.wave;
-          const z = ent.spawn(t, clamp(x, -31, 31), rand(-36, -11));
+          // Corredor terrestre entre la orilla y el flanco este; los roles de mar
+          // reposicionan su aparición en la costa dentro de spawn().
+          const z = ent.spawn(t, rand(FENCE_X0, FENCE_X1), rand(-36, -17));
           if (t === 'boss') {
             const bb = $('bossbar');
             if (bb) bb.style.display = 'block';
@@ -1464,15 +1562,16 @@ function animate() {
     if (S.strikeCd > 0) { S.strikeCd -= dt; if ((S.strikeCd * 2 | 0) % 2 === 0) updateHUD(); }
     if (S.time - S.lastHurt > 5 && S.hp < 100) S.hp = Math.min(100, S.hp + 4 * dt);
 
-    // Actualización de entidades (zombis, torretas, civiles, soldados)
+    // Actualización de entidades (zombis, torretas, civiles, soldados, lanchas, piedras)
     ent.update(dt, S.time, {
-      fenceAlive: S.fenceAlive,
+      fences: S.fences,
+      fenceAlive: S.fences.some(f => f.alive),
       playerPos: camera.position,
       extract: { x: 26, z: 2 },
     });
 
     updateProjectiles(dt);
-    world.fenceVisual(S.fenceAlive ? S.fence / S.fenceMax : 0);
+    world.fenceVisual(fenceFracs());
 
     const hd = world.heliPosV.distanceTo(camera.position);
     audio.setRotor(clamp(1 - hd / 120, 0, 1) * (world.heliTask ? 1.4 : 1));
@@ -1539,6 +1638,7 @@ if (typeof window !== 'undefined') {
   window.__FRTD__ = {
     S, camera, scene, world, ent, fx, WEAPONS,
     SNIPER_EYE, PARAPET_TOP, CAM_BASE_PITCH, FENCE_Z,
+    SHORE_X, FENCE_ZS, FENCE_LABELS, fenceFracs, fenceAvg,
     setZoom, startGame, startWave, updateAim, rayHit, tryFire, deployTurret, switchWeapon,
   };
 }
