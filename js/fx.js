@@ -176,6 +176,16 @@ export class FX {
     this.sparks.burst(p, 12, { colors: [[0.45, 0.36, 0.24], [0.3, 0.24, 0.16]], speed: 5, life: 0.7, grav: 12 });
     this.smoke.burst(p, 4, { colors: [[0.2, 0.18, 0.15]], speed: 2, life: 1.2, grav: -0.5, up: 1.2 });
   }
+  splash(p, scale) {
+    const s = scale || 1;
+    this.sparks.burst(p, Math.round(16 * s), {
+      colors: [[0.65, 0.9, 1], [0.85, 0.97, 1], [0.4, 0.7, 0.85]],
+      speed: 5.5 * s, life: 0.8, grav: 11, up: 1.2
+    });
+    this.smoke.burst(p, Math.round(3 * s), {
+      colors: [[0.75, 0.85, 0.88]], speed: 1.6 * s, life: 0.9, grav: -0.8, up: 1.1
+    });
+  }
   healSparkle(p) {
     this.sparks.burst(p, 14, { colors: [[0.4, 1, 0.6], [0.7, 1, 0.8]], speed: 2.5, life: 0.8, grav: -2, up: 1 });
   }

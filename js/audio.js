@@ -123,6 +123,26 @@ export class AudioEngine {
     this.osc('square', 300, 120, t, 0.12, 0.25);
     this.noise(t, 0.1, 0.3, 'bandpass', 900, 2);
   }
+  stoneThrow() {
+    if (!this.ctx) return; const t = this.now();
+    this.noise(t, 0.18, 0.22, 'bandpass', 1400, 1.5);
+    this.osc('sine', 500, 900, t, 0.12, 0.08);
+  }
+  stoneHit() {
+    if (!this.ctx) return; const t = this.now();
+    this.noise(t, 0.09, 0.4, 'bandpass', 2400, 2);
+    this.osc('triangle', 320, 140, t, 0.09, 0.25);
+  }
+  splash(big) {
+    if (!this.ctx) return; const t = this.now(); const s = big ? 1.4 : 1.0;
+    this.noise(t, 0.5 * s, 0.4, 'highpass', 1200);
+    this.noise(t + 0.05, 0.4 * s, 0.3, 'bandpass', 800, 1);
+  }
+  boatCreak() {
+    if (!this.ctx) return; const t = this.now();
+    this.osc('sawtooth', 140, 90, t, 0.25, 0.12);
+    this.noise(t, 0.2, 0.15, 'lowpass', 500);
+  }
   repair() {
     if (!this.ctx) return; const t = this.now();
     for (let i = 0; i < 4; i++) this.noise(t + i * 0.16, 0.07, 0.5, 'bandpass', 2200 + i * 500, 3);

@@ -28,7 +28,7 @@ Abre `http://localhost:8000`.
 | **Rueda** | Cambiar de arma |
 | **Q** | Alternar munición especial (Normal → Incendiaria → Eléctrica) |
 | **R** | Recargar arma |
-| **F** | Reparar valla fronteriza (120 pts) |
+| **F** | Reparar las 3 vallas fronterizas (120 pts) |
 | **T** | Solicitar ataque aéreo de helicóptero (Oleada 3+) |
 | **B** | Arsenal / Tienda de mejoras de campo |
 | **Enter** | Desplegar siguiente oleada (durante intermisión) |
@@ -42,6 +42,14 @@ Abre `http://localhost:8000`.
 - **Botón TORRETA:** Coloca ametralladoras autónomas en las posiciones clave del perímetro defensivo.
 - **Botones de acción táctiles:** Recarga rápida, reparación de valla, ataque aéreo y cambio de munición.
 - **Botón Pantalla Completa (⛶):** Oculta barras de navegación para máxima inmersión táctil.
+
+## Novedades: Mar al Oeste, Triple Valla y Asalto Anfibio
+
+- **Mar a la izquierda (oeste):** la costa corre de norte a sur; el flanco marítimo queda abierto.
+- **3 capas de vallas** en profundidad (Exterior −14 m, Media −7 m, Interior −1 m), cada una con su integridad, HUD propio y postes que caen por separado.
+- **Tres roles de asalto:** unos **rompen** las vallas capa por capa, otros las **trepan** (1,4 s por capa) y otros **cruzan por el mar**: tardan **3 s en poner la lancha** y **2 s en salir** de la orilla, navegan hacia el sur y desembarcan tras la valla interior.
+- **La mayoría porta armas cuerpo a cuerpo** (bate, machete, tubería, hacha: +1 de daño) **y lanza piedras** contra las vallas (2 de daño) y la torre (3 de daño).
+- Lanchas varadas en la orilla, chapoteos, avisos por radio del desembarco y torreta «Flanco Mar» cubriendo la costa.
 
 ## Novedades y Características Principales
 
@@ -79,7 +87,7 @@ Abre `http://localhost:8000`.
 index.html          Interfaz minimalista, mira telescópica y controles táctiles adaptativos
 js/game.js          Núcleo del juego: combate, oleadas, torretas, cámara elevada y bucle principal
 js/world.js         Mundo 3D: torre de vigilancia, iluminación perimetral, valla y clima
-js/entities.js      Entidades: ametralladoras autónomas, zombis con visibilidad reforzada, civiles y soldados
+js/entities.js      Entidades: ametralladoras, zombis (rompedores/trepadores/asaltantes de mar), lanchas, piedras, civiles y soldados
 js/fx.js            Efectos visuales: trazadoras, destellos, impactos, humo y explosiones
 js/audio.js         Audio procedural: disparos, torretas, zoom óptico, explosiones y música dinámica
 resources/          Modelo 3D del fusil Mauser 98K (GLTF + texturas)
