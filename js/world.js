@@ -34,11 +34,18 @@ export const SNIPER_EYE = Object.freeze({ x: 0, y: 13.95, z: 32.0 });
 export const PARAPET_TOP = 13.14;
 export const PARAPET_Z = 31.05;
 
-// ---------- GEOGRAFÍA DEL SECTOR COSTERO ----------
-// El mar queda a la IZQUIERDA (oeste, x < SHORE_X). La playa/orilla corre de norte a
-// sur sobre x = SHORE_X. Las vallas bloquean el corredor terrestre (FENCE_X0..FENCE_X1)
-// en 3 capas de profundidad; el flanco marítimo queda abierto para el asalto en lancha.
-export const SHORE_X = -12;
+// ---------- GEOGRAFÍA DEL SECTOR COSTERO (costa 25/75) ----------
+// El mar queda a la IZQUIERDA (oeste, x < SHORE_X) y está DELIMITADO A LA COSTA: el
+// plano de agua termina exactamente en x = SHORE_X y no se solapa con el terreno.
+// SHORE_X = -26 encuadra el mar en ≈25 % del campo de visión (a 16:9, verificado por
+// proyección de la cámara SNIPER_EYE, pitch ≈ -16,5°, VFOV 62°) sobre el tramo de
+// juego (vallas y aproximación, 40-60 m): el 75 % restante es tierra firme.
+// La costa corre de norte a sur PARALELA al frente de la torre: la cámara mira al
+// horizonte (−Z) y se enfrenta a los invasores de frente, que vienen por la playa.
+// Las vallas se extienden solo en tierra firme (FENCE_X0..FENCE_X1, con 16 m de
+// margen a la orilla); el flanco marítimo queda abierto para el asalto en lancha
+// enemiga y para la lancha de defensa que patrulla nuestra playa.
+export const SHORE_X = -26;
 export const FENCE_ZS = Object.freeze([-14, -7, -1]); // exterior → interior
 export const FENCE_X0 = -10;
 export const FENCE_X1 = 31;
@@ -102,19 +109,21 @@ export class World {
     this.scene.add(this.stars);
   }
 
-  // ---------- terreno: mar a la izquierda + playa + orilla ----------
+  // ---------- terreno: mar delimitado a la costa (izquierda) + playa (derecha) ----------
   buildTerrain() {
-    // MAR (oeste): plano de agua animada a la izquierda de la orilla.
+    // MAR (oeste): plano de agua animada a la izquierda de la orilla. Su borde este
+    // queda EXACTAMENTE en x = SHORE_X: el agua no se solapa con el terreno.
     this.waterGeo = new THREE.PlaneGeometry(160, 340, 40, 56);
     this.waterGeo.rotateX(-Math.PI / 2);
     this.waterBase = this.waterGeo.attributes.position.array.slice();
     this.water = new THREE.Mesh(this.waterGeo, new THREE.MeshPhongMaterial({
       color: 0x0a343c, shininess: 110, transparent: true, opacity: 0.93
     }));
-    // x: -172..-12 (borde este justo en la orilla), z: -180..160
+    // x: SHORE_X-160..SHORE_X (borde este justo en la orilla), z: -180..160
     this.water.position.set(SHORE_X - 80, -0.15, -10);
     this.scene.add(this.water);
-    // Fondo marino bajo el agua para dar profundidad
+    // Fondo marino bajo el agua para dar profundidad (mismo alcance que el agua;
+    // nunca más allá de la orilla, para no asomarse bajo la arena)
     this.seabed = new THREE.Mesh(
       new THREE.PlaneGeometry(160, 340),
       new THREE.MeshStandardMaterial({ color: 0x3a4a44, roughness: 1 })
@@ -122,14 +131,15 @@ export class World {
     this.seabed.rotation.x = -Math.PI / 2;
     this.seabed.position.set(SHORE_X - 80, -0.9, -10);
     this.scene.add(this.seabed);
-    // TIERRA (este): arena que cubre todo el corredor terrestre y bajo la torre.
+    // TIERRA (este): arena que cubre todo el corredor terrestre y bajo la torre,
+    // desde la orilla (x = SHORE_X) hacia el este: sin huecos ni solapamientos.
     this.sand = new THREE.Mesh(
-      new THREE.PlaneGeometry(150, 340),
+      new THREE.PlaneGeometry(156, 340),
       new THREE.MeshStandardMaterial({ color: 0x8e7757, roughness: 1 })
     );
     this.sand.rotation.x = -Math.PI / 2;
-    // x: -12..138, z: -180..160
-    this.sand.position.set(SHORE_X + 75, 0, -10);
+    // x: SHORE_X..138, z: -180..160
+    this.sand.position.set(SHORE_X + 78, 0, -10);
     this.sand.receiveShadow = true;
     this.scene.add(this.sand);
     // Franja de arena húmeda en la orilla (marca visual de la línea de costa)
@@ -147,11 +157,11 @@ export class World {
     this.foam.rotation.x = -Math.PI / 2;
     this.foam.position.set(SHORE_X - 0.4, 0.06, -10);
     this.scene.add(this.foam);
-    // Rocas: escollos en el mar + peñascos en tierra firme (lejos del campo de tiro)
+    // Rocas: escollos en el mar (profundidad, lejos de la playa) + peñascos en tierra
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x1c3536, roughness: 0.95 });
     for (let i = 0; i < 10; i++) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(2 + Math.random() * 4, 0.8 + Math.random() * 2.2, 2 + Math.random() * 3), rockMat);
-      m.position.set(-46 + Math.random() * 28, 0.2, -40 + Math.random() * 70);
+      m.position.set(SHORE_X - 44 + Math.random() * 24, 0.2, -40 + Math.random() * 70);
       m.castShadow = true;
       this.scene.add(m);
     }

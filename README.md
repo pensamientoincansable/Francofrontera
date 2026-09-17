@@ -24,6 +24,7 @@ Abre `http://localhost:8000`.
 | **Click der. / Espacio** | Activar mira telescópica (zoom con desenfoque periférico) |
 | **ESC / Botón QUITAR MIRA** | Salir de la mira telescópica |
 | **E / C** | **Desplegar ametralladora autónoma (hasta 4 en el perímetro)** |
+| **L** | **Fabricar lancha de defensa en nuestra playa (200 pts, oleada 2+, máx. 2)** |
 | **1 / 2 / 3 / 4** | Seleccionar arma (Rifle · Pistola · Lanzagranadas · Misiles) |
 | **Rueda** | Cambiar de arma |
 | **Q** | Alternar munición especial (Normal → Incendiaria → Eléctrica) |
@@ -40,8 +41,16 @@ Abre `http://localhost:8000`.
 - **Botón FUEGO:** Botón circular prominente para disparar con el pulgar derecho (soporta ráfaga mantenida).
 - **Botón MIRA:** Alterna la mira telescópica con zoom óptico y desenfoque periférico.
 - **Botón TORRETA:** Coloca ametralladoras autónomas en las posiciones clave del perímetro defensivo.
+- **Botón LANCHA:** Fabrica lanchas de defensa en vuestra playa para cubrir el flanco marítimo.
 - **Botones de acción táctiles:** Recarga rápida, reparación de valla, ataque aéreo y cambio de munición.
 - **Botón Pantalla Completa (⛶):** Oculta barras de navegación para máxima inmersión táctil.
+
+## Novedades: Costa 25/75, Frente Paralelo y Lancha de Defensa
+
+- **Mar delimitado a la costa:** el plano de agua termina exactamente en la línea de orilla (`x = -26`) y **no se solapa con el terreno**; arena, arena húmeda y espuma marcan la frontera entre mar y tierra.
+- **Campo de visión 25/75:** la torre mira al horizonte **paralela al mar** (costa norte-sur, mar a la izquierda): el mar ocupa el **25 % izquierdo** de la visión y la tierra firme el **75 % derecho**. Se enfrenta a los invasores **de frente**: llegan desde el horizonte por la playa hasta las vallas.
+- **Vallas solo en tierra firme:** las 3 capas (Exterior −14 m, Media −7 m, Interior −1 m) se extienden únicamente sobre tierra, con 16 m de margen a la orilla; cada capa conserva su integridad, HUD y postes propios.
+- **Lancha de defensa del jugador (L):** se **fabrica** (200 pts, oleada 2+, máx. 2) y queda **anclada en nuestro lado de la frontera** (playa, a 0,6 m de la línea de agua, proa al mar). No cruza la orilla: vigila el flanco marítimo y abre fuego automático sobre los objetivos de mar (nadar, botar lancha, navegar) que se acerquen a la frontera. Puede ser destruida por explosiones cercanas (propias o enemigas); si es así, la playa queda desprotegida hasta fabricar otra.
 
 ## Novedades: Mar al Oeste, Triple Valla y Asalto Anfibio
 
@@ -87,7 +96,7 @@ Abre `http://localhost:8000`.
 index.html          Interfaz minimalista, mira telescópica y controles táctiles adaptativos
 js/game.js          Núcleo del juego: combate, oleadas, torretas, cámara elevada y bucle principal
 js/world.js         Mundo 3D: torre de vigilancia, iluminación perimetral, valla y clima
-js/entities.js      Entidades: ametralladoras, zombis (rompedores/trepadores/asaltantes de mar), lanchas, piedras, civiles y soldados
+js/entities.js      Entidades: ametralladoras, zombis (rompedores/trepadores/asaltantes de mar), lancha de defensa del jugador, piedras, civiles y soldados
 js/fx.js            Efectos visuales: trazadoras, destellos, impactos, humo y explosiones
 js/audio.js         Audio procedural: disparos, torretas, zoom óptico, explosiones y música dinámica
 resources/          Modelo 3D del fusil Mauser 98K (GLTF + texturas)

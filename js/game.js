@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { AudioEngine } from './audio.js';
 import { FX } from './fx.js';
 import { World, SNIPER_EYE, PARAPET_TOP, SHORE_X, FENCE_ZS, FENCE_X0, FENCE_X1, FENCE_LABELS } from './world.js';
-import { Entities, ZTYPES } from './entities.js';
+import { Entities, ZTYPES, BOAT_COST, BOAT_MAX } from './entities.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -199,6 +199,14 @@ const ent = new Entities(scene, fx, {
   },
   allyShot() { audio.shoot('ally'); },
   allyKill() {},
+  boatShot() { audio.shoot('boat'); },
+  boatDown(boat) {
+    if (!S.playing || S.paused) return;
+    audio.explosion(false);
+    toast('⚠ NUESTRA LANCHA HA SIDO DESTRUIDA ⚠');
+    radio('Nuestra lancha de defensa ha sido destruida. La playa queda desprotegida.', 'Lancha de defensa perdida.');
+    updateHUD();
+  },
   towerSiege() {
     // Zombis al pie de la torre: avisar para que el jugador mire hacia abajo
     if (!S.playing || S.paused) return;
@@ -422,6 +430,11 @@ function startWave(n) {
       toast('⚠ NUEVO: ASALTO ANFIBIO POR EL MAR (OESTE) ⚠');
       radio('Atención: el enemigo bota lanchas por el flanco oeste. Tres segundos para botarlas, dos para salir. ¡Húndelos!', 'Asalto anfibio por el oeste.');
     }, 3500);
+    setTimeout(() => {
+      if (!S.playing) return;
+      toast('NUEVO: LANCHA DE DEFENSA · FABRÍCALA CON [L]');
+      radio('Defensa costera lista: pulsa L para fabricar una lancha en nuestra playa (200 puntos). Se quedará en nuestro lado de la frontera y ametrallará a los blancos de mar.', 'Lancha de defensa disponible.');
+    }, 9000);
   }
   if (n % 5 === 0) {
     setTimeout(() => { if (S.playing) audio.bossRoar(); }, 1600);
@@ -477,6 +490,36 @@ function deployTurret() {
     audio.turretDeploy();
     toast(`AMETRALLADORA ${t.index + 1}/4 DESPLEGADA // ${t.slot.label}`);
     radio(`Ametralladora autónoma ${t.index + 1} en línea. Fuego de cobertura iniciado.`, 'Ametralladora en línea.');
+    updateHUD();
+  }
+}
+
+// ---------------- fabricación de lancha de defensa (flanco marítimo) ----------------
+// Se fabrica en NUESTRA playa (lado amigo de la frontera): no cruza la orilla, solo
+// vigila el mar y ametralla a los objetivos de mar que se acerquen a la frontera.
+function deployBoat() {
+  if (!S.playing || S.paused) return;
+  if (S.wave < 2) {
+    toast('LANCHA DE DEFENSA DISPONIBLE DESDE OLEADA 2');
+    audio.denied();
+    return;
+  }
+  if (ent.boats.length >= BOAT_MAX) {
+    toast(`${BOAT_MAX}/${BOAT_MAX} LANCHAS EN POSICIÓN (MÁXIMO)`);
+    audio.denied();
+    return;
+  }
+  if (S.score < BOAT_COST) {
+    toast(`PUNTOS INSUFICIENTES (${BOAT_COST} PTS)`);
+    audio.denied();
+    return;
+  }
+  S.score -= BOAT_COST;
+  const b = ent.deployBoat();
+  if (b) {
+    audio.boatDeploySfx && audio.boatDeploySfx();
+    toast(`LANCHA DE DEFENSA ${b.index + 1}/${BOAT_MAX} FABRICADA // ${b.slot.label}`);
+    radio(`Lancha de defensa en posición en nuestra playa (${b.slot.label}). Vigilará el flanco marítimo.`, 'Lancha de defensa en posición.');
     updateHUD();
   }
 }
@@ -691,6 +734,15 @@ function explode(p, radius, dmg, opt) {
       }
     }
   }
+  // La lancha de defensa está anclada en nuestra playa: las explosiones cercanas
+  // (también las propias) la dañan.
+  for (const bt of [...ent.boats]) {
+    const d = bt.g.position.distanceTo(p);
+    if (d < radius + 1.2) {
+      const fall = d < radius * 0.5 ? 1 : 0.5;
+      ent.damageBoat(bt, Math.max(1, Math.round(dmg * fall * 0.4)));
+    }
+  }
   if (opt.fence) {
     S.fences.forEach((f, i) => {
       if (!f.alive) return;
@@ -828,7 +880,8 @@ function callStrike() {
   if (!alive.length) { toast('SIN BLANCOS PARA EL ATAQUE AÉREO'); return; }
   for (const z of alive) c.add(z.g.position);
   c.divideScalar(alive.length);
-  const cx = clamp(c.x, -20, 20), cz = clamp(c.z, -24, 2);
+  // Centro del ataque sobre tierra firme (frente a las vallas), nunca sobre el mar
+  const cx = clamp(c.x, -14, 24), cz = clamp(c.z, -24, 2);
   const ok = world.heliStrike(
     new THREE.Vector3(cx - 26, 0, cz), new THREE.Vector3(cx + 26, 0, cz), 7,
     (i, pos) => {
@@ -906,6 +959,33 @@ function updateHUD() {
       } else {
         btnT.classList.remove('pulse');
       }
+    }
+  }
+
+  // Lanchas de defensa status
+  const bCount = ent.boats ? ent.boats.length : 0;
+  const bs = $('boatStatus'), btc = $('touchBoatCount');
+  if (bs) bs.textContent = `${bCount} / ${BOAT_MAX}`;
+  if (btc) btc.textContent = bCount;
+  const btnBt = $('btnBoat');
+  if (btnBt) {
+    const seaThreat = ent.list.some(z => !z.dead && z.role === 'sea' && z.g.position.x < SHORE_X + 4);
+    if (S.wave < 2) {
+      btnBt.disabled = true;
+      const th = $('boatHint');
+      if (th) th.innerHTML = 'DESDE OLEADA 2';
+      btnBt.classList.remove('pulse', 'hot');
+    } else if (bCount >= BOAT_MAX) {
+      btnBt.disabled = true;
+      const th = $('boatHint');
+      if (th) th.textContent = `${BOAT_MAX}/${BOAT_MAX} MÁXIMO`;
+      btnBt.classList.remove('pulse', 'hot');
+    } else {
+      btnBt.disabled = false;
+      const th = $('boatHint');
+      if (th) th.innerHTML = `TECLA L · <b>${bCount}</b>/${BOAT_MAX} · ${BOAT_COST} PTS`;
+      btnBt.classList.toggle('pulse', seaThreat && S.score >= BOAT_COST);
+      btnBt.classList.toggle('hot', seaThreat);
     }
   }
 
@@ -1251,6 +1331,7 @@ addEventListener('keydown', e => {
   else if (k === 'Digit3') switchWeapon(2);
   else if (k === 'Digit4') switchWeapon(3);
   else if (k === 'KeyE' || k === 'KeyC') deployTurret();
+  else if (k === 'KeyL') deployBoat();
   else if (k === 'KeyQ') cycleSpec();
   else if (k === 'KeyR') startReload(S.curW);
   else if (k === 'KeyF') repairFence();
@@ -1346,6 +1427,7 @@ bindTouchBtn('btnTouchScope', ()=> setZoom(!S.zoomed));
 bindTouchBtn('btnScopeExit', ()=> setZoom(false));
 bindTouchBtn('btnTouchReload', ()=> startReload(S.curW));
 bindTouchBtn('btnTouchTurret', ()=> deployTurret());
+bindTouchBtn('btnTouchBoat', ()=> deployBoat());
 bindTouchBtn('btnTouchRepair', ()=> repairFence());
 bindTouchBtn('btnTouchStrike', ()=> callStrike());
 bindTouchBtn('btnTouchAmmo', ()=> cycleSpec());
@@ -1507,9 +1589,10 @@ function animate() {
         for (let k = 0; k < 3 && S.pendingSpawns.length && ent.aliveCount() < 32; k++) {
           const t = S.pendingSpawns.shift();
           ent.wave = S.wave;
-          // Corredor terrestre entre la orilla y el flanco este; los roles de mar
-          // reposicionan su aparición en la costa dentro de spawn().
-          const z = ent.spawn(t, rand(FENCE_X0, FENCE_X1), rand(-36, -17));
+          // Corredor terrestre entre la orilla y el flanco este; los objetivos
+          // llegan desde el horizonte (z ≈ -45) por la playa hasta las vallas.
+          // Los roles de mar reposicionan su aparición en el agua dentro de spawn().
+          const z = ent.spawn(t, rand(FENCE_X0, FENCE_X1), rand(-45, -17));
           if (t === 'boss') {
             const bb = $('bossbar');
             if (bb) bb.style.display = 'block';
@@ -1638,7 +1721,7 @@ if (typeof window !== 'undefined') {
   window.__FRTD__ = {
     S, camera, scene, world, ent, fx, WEAPONS,
     SNIPER_EYE, PARAPET_TOP, CAM_BASE_PITCH, FENCE_Z,
-    SHORE_X, FENCE_ZS, FENCE_LABELS, fenceFracs, fenceAvg,
-    setZoom, startGame, startWave, updateAim, rayHit, tryFire, deployTurret, switchWeapon,
+    SHORE_X, FENCE_ZS, FENCE_LABELS, BOAT_COST, BOAT_MAX, fenceFracs, fenceAvg,
+    setZoom, startGame, startWave, updateAim, rayHit, tryFire, deployTurret, deployBoat, switchWeapon,
   };
 }
