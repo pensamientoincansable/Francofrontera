@@ -93,6 +93,10 @@ export class AudioEngine {
       this.noise(t, 0.08, 0.4, 'bandpass', 1900, 2.5);
       this.osc('square', 340, 90, t, 0.07, 0.28);
       this.osc('sine', 150, 48, t, 0.1, 0.4);
+    } else if (kind === 'boat') {
+      this.noise(t, 0.07, 0.35, 'bandpass', 2400, 3);
+      this.osc('square', 430, 120, t, 0.06, 0.22);
+      this.osc('sine', 170, 55, t, 0.08, 0.3);
     }
   }
   dryFire() { if (!this.ctx) return; const t = this.now(); this.osc('square', 1800, 1200, t, 0.04, 0.15); }
@@ -157,6 +161,15 @@ export class AudioEngine {
     this.osc('triangle', 180, 440, t, 0.18, 0.3);
     this.noise(t + 0.08, 0.16, 0.35, 'bandpass', 1200, 2);
     this.osc('sine', 480, 640, t + 0.2, 0.12, 0.2);
+  }
+  boatDeploySfx() {
+    if (!this.ctx) return; const t = this.now();
+    // casco al agua + arranque de motor
+    this.noise(t, 0.4, 0.4, 'lowpass', 700);
+    this.osc('sine', 90, 160, t, 0.5, 0.3);
+    this.osc('sawtooth', 70, 130, t + 0.15, 0.6, 0.15);
+    this.noise(t + 0.2, 0.3, 0.2, 'bandpass', 500, 2);
+    this.osc('triangle', 620, 880, t + 0.55, 0.14, 0.2);
   }
   scopeIn() {
     if (!this.ctx) return; const t = this.now();

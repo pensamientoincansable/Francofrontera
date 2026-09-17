@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 
 // Geografía — DEBE coincidir con js/world.js (duplicado para evitar dependencia circular)
-const SHORE_X = -12;              // mar a la izquierda: x < SHORE_X
+const SHORE_X = -26;              // mar a la izquierda, delimitado a la costa: x < SHORE_X (≈25% del campo de visión a 16:9, ver world.js)
 const FENCE_ZS = [-14, -7, -1];   // 3 capas: exterior → interior
 const FENCE_X0 = -10, FENCE_X1 = 31;
 const BOAT_DEPLOY_TIME = 3.0;     // 3 s para poner la lancha
@@ -30,11 +30,21 @@ export const TURRET_SLOTS = [
   { x: 23,  z: 1.2, label: 'FLANCO DER' },
 ];
 
+// Puestos de atraque de la LANCHA DE DEFENSA del jugador: en NUESTRO lado de la
+// frontera (playa, en tierra, a 0,6 m de la línea de agua), proa hacia el mar.
+export const BOAT_SLOTS = Object.freeze([
+  { x: SHORE_X + 0.6, z: -14, label: 'COSTA NORTE' },
+  { x: SHORE_X + 0.6, z: 3,   label: 'COSTA SUR' },
+]);
+// Coste en puntos y tope de lanchas fabricables
+export const BOAT_COST = 200;
+export const BOAT_MAX = 2;
+
 export class Entities {
   constructor(scene, fx, hooks) {
     this.scene = scene; this.fx = fx; this.hooks = hooks;
     this.list = []; this.civs = []; this.soldiers = []; this.turrets = [];
-    this.stones = []; this.beached = [];
+    this.stones = []; this.beached = []; this.boats = [];
     this.boss = null;
     this.wave = 1;
     this.mats = {
@@ -286,14 +296,15 @@ export class Entities {
     let sx = x, sz = z, state = 'advance';
     let embark = null, land = null, sailX = -19;
     if (role === 'sea') {
-      // Aparece en la franja costera norte y baja hasta su punto de embarque
-      sx = -26 + Math.random() * 10;
-      sz = -34 + Math.random() * 12;
+      // Asalto anfibio: aparece en el mar (a la izquierda, desde el horizonte) y
+      // rema hasta su punto de botadura en la franja costera norte.
+      sx = SHORE_X - 9 + Math.random() * 8;       // en el agua, a 1-9 m de la orilla
+      sz = -42 + Math.random() * 18;              // z: -42..-24, en el horizonte marítimo
       state = 'to_shore';
-      const embarkZ = -22 + (Math.random() * 8 - 4);
-      embark = { x: SHORE_X - 1.2, z: embarkZ };
-      sailX = -19 - Math.random() * 2;
-      land = { x: FENCE_X0 - 0.5, z: 5 + Math.random() * 3 };
+      const embarkZ = -26 + Math.random() * 8;
+      embark = { x: SHORE_X - 1.2, z: embarkZ };  // justo en la línea de agua
+      sailX = SHORE_X - 5 - Math.random() * 3;    // canal de navegación, mar adentro
+      land = { x: FENCE_X0 - 0.5, z: 5 + Math.random() * 3 }; // playa sur, tras la valla interior
     } else {
       sx = THREE.MathUtils.clamp(x, FENCE_X0, FENCE_X1);
     }
@@ -385,14 +396,122 @@ export class Entities {
   }
   beachBoat(z) {
     if (!z || !z.boat) return;
-    // La lancha queda varada en la orilla como resto (máx. 8, se reciclan)
+    // La lancha queda varada donde la arrastró el asaltante (playa, en tierra)
+    // como resto (máx. 8, se reciclan)
     const b = z.boat; z.boat = null;
-    b.position.set(SHORE_X - 0.6, 0.1, z.g.position.z);
+    b.position.set(z.g.position.x, 0.06, z.g.position.z);
     b.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.5;
     this.beached.push(b);
     while (this.beached.length > 8) {
       const old = this.beached.shift();
       try { this.scene.remove(old); } catch (e) {}
+    }
+  }
+
+  // ---------- lancha de DEFENSA del jugador (nuestro lado de la frontera) ----------
+  // Se fabrica con puntos (game.js) y queda en nuestro lado de la orilla: no cruza
+  // la frontera, solo vigila el flanco marítimo y abre fuego automático contra los
+  // objetivos de mar (nadar / botar lancha / navegar) que se acerquen a la frontera.
+  buildPlayerBoat() {
+    const b = new THREE.Group();
+    const hull = new THREE.Mesh(this.boatGeos.hull, this.mats.boatTube); // verde militar
+    hull.position.y = 0.15; hull.castShadow = true; b.add(hull);
+    // Cabina / torreta giratoria
+    const turret = new THREE.Group();
+    turret.position.set(0, 0.42, 0);
+    b.add(turret);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.28, 1.1), this.mats.turretAccent);
+    base.position.y = 0.05; base.castShadow = true; turret.add(base);
+    // Cañón (apunta a -Z en espacio local)
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.3, 8), this.mats.turretDark);
+    barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.16, -0.7); turret.add(barrel);
+    const muzzle = new THREE.Object3D();
+    muzzle.position.set(0, 0.16, -1.4);
+    turret.add(muzzle);
+    // Baliza superior
+    const beaconMat = new THREE.MeshBasicMaterial({ color: 0x36c8ff });
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), beaconMat);
+    beacon.position.set(0, 0.5, 0); turret.add(beacon);
+    // Proa: punta hacia el mar
+    b.rotation.y = Math.PI / 2;
+    return { g: b, turret, muzzle, beaconMat };
+  }
+  deployBoat() {
+    if (this.boats.length >= BOAT_MAX) return null;
+    const idx = this.boats.length;
+    const slot = BOAT_SLOTS[idx];
+    const { g, turret, muzzle, beaconMat } = this.buildPlayerBoat();
+    g.position.set(slot.x, 0.1, slot.z);
+    this.scene.add(g);
+    this.fx.sparkHit(g.position.clone().setY(0.6));
+    for (let k = 0; k < 8; k++) this.fx.healSparkle(g.position.clone().setY(0.8));
+    if (this.fx.splash) this.fx.splash(g.position.clone().setY(0.2), 1.0);
+    const boat = {
+      index: idx, slot, g, turret, muzzle, beaconMat,
+      hp: 60, maxHp: 60,
+      yaw: Math.PI / 2,
+      fireCd: 0.4,
+      target: null,
+      phase: Math.random() * 6,
+      alive: true,
+    };
+    this.boats.push(boat);
+    return boat;
+  }
+  damageBoat(boat, amount, opt) {
+    if (!boat || !boat.alive) return false;
+    boat.hp = Math.max(0, boat.hp - amount);
+    if (boat.hp <= 0 && boat.alive) {
+      boat.alive = false;
+      const p = boat.g.position.clone(); p.y = 0.4;
+      if (this.fx.explosion) this.fx.explosion(p, false);
+      this.hooks.boatDown && this.hooks.boatDown(boat);
+      this.scene.remove(boat.g);
+      this.boats.splice(this.boats.indexOf(boat), 1);
+    }
+    return boat.hp <= 0;
+  }
+  updateBoats(dt, t, ctx) {
+    for (const boat of [...this.boats]) {
+      if (!boat.alive) continue;
+      const g = boat.g;
+      // Mece suave en el agua, siempre en su lado de la frontera
+      const bob = Math.sin(t * 1.8 + boat.phase) * 0.06;
+      g.position.y = 0.1 + bob;
+      g.rotation.z = Math.sin(t * 1.3 + boat.phase) * 0.02;
+      // Baliza parpadeante
+      boat.beaconMat.color.setHex((t % 1.2) < 0.6 ? 0x36c8ff : 0x0a3440);
+      // Objetivo: el objetivo de mar más cercano dentro del alcance
+      let best = null, bd = 48;
+      for (const z of this.list) {
+        if (z.dead || z.role !== 'sea') continue;
+        const d = g.position.distanceTo(z.g.position);
+        if (d < bd) { bd = d; best = z; }
+      }
+      boat.target = best;
+      let desiredYaw = Math.sin(t * 0.5 + boat.phase) * 0.4; // sin blanco: patrulla la orilla (local; el casco ya mira al mar)
+      if (best) {
+        const dx = best.g.position.x - g.position.x;
+        const dz = best.g.position.z - g.position.z;
+        desiredYaw = Math.atan2(-dx, -dz) - Math.PI / 2; // compensar el yaw del casco (proa al mar)
+        // Disparo automático en ráfagas
+        boat.fireCd -= dt;
+        if (boat.fireCd <= 0) {
+          boat.fireCd = 0.2;
+          const from = new THREE.Vector3(); boat.muzzle.getWorldPosition(from);
+          const to = best.g.position.clone(); to.y += 1.3 * best.cfg.scale;
+          this.fx.tracer(from, to, 0x7cf8ff);
+          this.fx.sparkHit(to);
+          this.hooks.boatShot && this.hooks.boatShot();
+          this.damage(best, 1.0, { by: 'boat' });
+        }
+      }
+      // Suavizado del giro de la torreta (normalizar diferencial de ángulo)
+      let dAng = desiredYaw - boat.yaw;
+      while (dAng > Math.PI) dAng -= Math.PI * 2;
+      while (dAng < -Math.PI) dAng += Math.PI * 2;
+      boat.yaw += dAng * Math.min(1, dt * 6);
+      boat.turret.rotation.y = boat.yaw;
     }
   }
 
@@ -509,8 +628,9 @@ export class Entities {
     for (const t of this.turrets) this.scene.remove(t.g);
     for (const st of this.stones) { try { this.scene.remove(st.mesh); } catch (e) {} }
     for (const b of this.beached) { try { this.scene.remove(b); } catch (e) {} }
+    for (const bt of this.boats) { try { this.scene.remove(bt.g); } catch (e) {} }
     this.list = []; this.civs = []; this.soldiers = []; this.turrets = [];
-    this.stones = []; this.beached = []; this.boss = null;
+    this.stones = []; this.beached = []; this.boats = []; this.boss = null;
   }
 
   update(dt, t, ctx) {
@@ -572,6 +692,9 @@ export class Entities {
         turret.gunMount.rotation.x += (-0.08 - turret.gunMount.rotation.x) * Math.min(1, dt * 3);
       }
     }
+
+    // Lancha de defensa del jugador: mece en nuestra playa y ametralla los objetivos de mar
+    this.updateBoats(dt, t, ctx);
 
     for (let i = this.list.length - 1; i >= 0; i--) {
       const z = this.list[i], g = z.g;

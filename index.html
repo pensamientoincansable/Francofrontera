@@ -528,11 +528,13 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
       <div class="bar-row"><span>VLLA INT</span><div class="bar"><i id="fenceFill2"></i></div><b id="fenceText2">100</b></div>
       <div class="bar-row"><span>SALUD</span><div class="bar"><i id="hpFill"></i></div><b id="hpText">100</b></div>
       <div class="turret-badge"><span>AMETRALLADORAS:</span><b id="turretStatus">0 / 4</b></div>
+      <div class="turret-badge"><span>LANCHAS (PLAYA):</span><b id="boatStatus">0 / 2</b></div>
     </div>
 
     <!-- Botones de acción para PC / pantalla ancha -->
     <div class="actions hud-hide-scoped">
       <button class="action" id="btnTurret"><strong>⚙ AMETRALLADORA</strong><span id="turretHint">TECLA E · <b id="turretCountVal">0</b>/4</span></button>
+      <button class="action" id="btnBoat" disabled><strong>⛵ LANCHA PLAYA</strong><span id="boatHint">DESDE OLEADA 2</span></button>
       <button class="action" id="btnRepair"><strong>⛨ REPARAR VALLAS</strong><span>TECLA F · 120 PTS · 3 CAPAS</span></button>
       <button class="action hot" id="btnStrike" disabled><strong>✦ ATAQUE AÉREO</strong><span id="strikeText">OLEADA 3</span></button>
       <button class="action" id="btnShop"><strong>▲ MEJORAS</strong><span>TECLA B</span></button>
@@ -545,6 +547,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
 
     <div class="touch-action-bar hud-hide-scoped">
       <button class="tbtn-pill hot" id="btnTouchTurret">⚙ TORRETA (<span id="touchTurretCount">0</span>/4)</button>
+      <button class="tbtn-pill" id="btnTouchBoat">⛵ LANCHA (<span id="touchBoatCount">0</span>/2)</button>
       <button class="tbtn-pill" id="btnTouchRepair">⛨ REPARAR</button>
       <button class="tbtn-pill" id="btnTouchStrike">✦ APOYO</button>
       <button class="tbtn-pill" id="btnTouchAmmo">⚡ MUNICIÓN</button>
@@ -563,7 +566,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
   <div class="card">
     <div class="kicker">FRONTERA // DEFENSE NETWORK</div>
     <h1>DEAD <em>TIDE</em></h1>
-    <p>Posición de francotirador en la torre costera. El mar queda a la izquierda: defiende las 3 vallas (exterior, media e interior), frena a los que trepan, a los que rompen y a los que desembarcan en lancha por el oeste (3 s botarla + 2 s salir). La mayoría porta armas cuerpo a cuerpo y lanza piedras.</p>
+    <p>Posición de francotirador en la torre costera, de frente al horizonte: el mar (delimitado a la costa) ocupa el 25 % izquierdo de tu visión y el 75 % derecho es tierra firme. Los invasores avanzan desde el horizonte por la playa hasta las 3 vallas (exterior, media e interior), solo en tierra: frena a los que rompen y a los que trepan. El flanco marítimo te lo defiendes a tiros o fabricando tu <b>lancha de defensa [L]</b>, que se queda en nuestra playa y ametralla a los blancos de mar que se acerquen a la frontera.</p>
     <div class="btnrow">
       <button class="start" id="btnStart">INICIAR OPERACIÓN →</button>
       <button class="start ghost" id="btnContinue" disabled>CONTINUAR</button>
@@ -571,7 +574,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
       <button class="start ghost" id="btnHelp">CONTROLES</button>
     </div>
     <div class="menuBest" id="menuBest">RÉCORD LOCAL: 0 PTS</div>
-    <div class="controls"><b>PC:</b> Ratón apunta · Click dispara · RMB/Espacio zoom telescópico · ESC / botón QUITAR MIRA para salir · <b>E</b> torreta autónoma (hasta 4) · <b>R</b> recarga · <b>F</b> repara · <b>B</b> mejoras<br><b>Android:</b> Arrastra para apuntar · Botón MIRA con zoom y desenfoque · Botón QUITAR MIRA para salir · Botón FUEGO · Botón TORRETA</div>
+    <div class="controls"><b>PC:</b> Ratón apunta · Click dispara · RMB/Espacio zoom telescópico · ESC / botón QUITAR MIRA para salir · <b>E</b> torreta autónoma (hasta 4) · <b>L</b> lancha de defensa en nuestra playa (200 pts) · <b>R</b> recarga · <b>F</b> repara · <b>B</b> mejoras<br><b>Android:</b> Arrastra para apuntar · Botón MIRA con zoom y desenfoque · Botón QUITAR MIRA para salir · Botón FUEGO · Botón TORRETA · Botón LANCHA</div>
   </div>
 </div>
 
@@ -632,6 +635,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
       <b>CLICK IZQ / BOTÓN FUEGO</b><span>Disparar arma seleccionada</span>
       <b>CLICK DER / ESPACIO / BOTÓN MIRA</b><span>Activar mira telescópica con zoom y desenfoque periférico</span>
       <b>E / C / BOTÓN TORRETA</b><span>Colocar ametralladora autónoma (hasta 4 en el perímetro)</span>
+      <b>L / BOTÓN LANCHA</b><span>Fabricar lancha de defensa en nuestra playa (200 pts, oleada 2+, máx. 2): se queda en nuestro lado de la frontera y ametralla a los objetivos de mar que se acerquen</span>
       <b>1 / 2 / 3 / 4 / RANURAS</b><span>Cambiar de arma (Rifle, Pistola, Lanzagranadas, Misiles)</span>
       <b>Q / BOTÓN MUNICIÓN</b><span>Alternar munición especial (Normal / Incendiaria / Eléctrica)</span>
       <b>R / BOTÓN RECARGA</b><span>Recargar arma</span>
