@@ -229,10 +229,15 @@ class ModelManager {
           }
         });
 
+        // Guardamos los clips de animación del GLTF (si los tiene) para que las
+        // entidades puedan usar un AnimationMixer real cuando el modelo la incluya.
+        const clips = (gltf && gltf.animations) ? gltf.animations.slice() : [];
+
         const entry = {
           id,
           mesh: wrap,
           gltf,
+          animations: clips,
           size: size.clone().multiplyScalar(s),
           targetH
         };
@@ -263,6 +268,21 @@ class ModelManager {
     const entry = this.templates.get(key);
     if (!entry) return null;
     return cloneModel(entry.mesh);
+  }
+
+  // Clips de animación reales del modelo (p.ej. un walk de Mixamo).
+  // Devuelve null si el modelo no trae clips con más de una clave (poses estáticas).
+  getAnimation(typeId) {
+    const entry = this.templates.get('enemy_' + typeId);
+    if (!entry || !entry.animations) return null;
+    for (const clip of entry.animations) {
+      let keyframes = 1;
+      for (const tr of clip.tracks) {
+        if (tr.values) keyframes = Math.max(keyframes, tr.values.length);
+      }
+      if (keyframes >= 2 && clip.duration > 0.2) return clip;
+    }
+    return null;
   }
 
   // Obtiene un holograma semitransparente para previsualización de colocación

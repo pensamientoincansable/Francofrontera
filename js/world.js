@@ -51,6 +51,13 @@ export const FENCE_ZS = Object.freeze([-14, -7, -1]); // exterior → interior
 export const FENCE_X0 = -26;
 export const FENCE_X1 = 32;
 export const FENCE_LABELS = Object.freeze(['EXTERIOR', 'MEDIA', 'INTERIOR']);
+// Zona construible del editor de vallado: todo el corredor terrestre por donde
+// avanzan los infectados, desde el horizonte de aparición hasta los sacos que hay
+// detrás de la valla interior. (En tierra firme: el mar queda fuera por x < SHORE_X.)
+export const BUILD_X0 = FENCE_X0;  // -26 (línea de costa)
+export const BUILD_X1 = FENCE_X1;  // +32 (muro este)
+export const BUILD_Z0 = -45;       // horizonte de aparición
+export const BUILD_Z1 = 12;        // sacos / zona de extracción
 // Tiempos del asalto anfibio: 3 s para poner la lancha + 2 s para salir de la orilla.
 export const BOAT_DEPLOY_TIME = 3.0;
 export const BOAT_LAUNCH_TIME = 2.0;
@@ -74,7 +81,135 @@ export class World {
     this.buildProps();
     this.buildHeli();
     this.buildRain();
+    this.buildEditorOverlay();
     this.buildViewmodels();
+  }
+
+  // ---------- SUPERVISIÓN DE EDICIÓN DE VALLADO ----------
+  // Rejilla + retícula en el terreno que marca la zona construible y el punto
+  // exacto de colocación. Solo visible en modo edición (setEditorOverlay).
+  buildEditorOverlay() {
+    const w = BUILD_X1 - BUILD_X0, d = BUILD_Z1 - BUILD_Z0;
+    const cx = (BUILD_X0 + BUILD_X1) / 2, cz = (BUILD_Z0 + BUILD_Z1) / 2;
+    const g = new THREE.Group();
+    g.name = 'fenceEditorOverlay';
+
+    // Suelo translúcido sobre la zona construible
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, d),
+      new THREE.MeshBasicMaterial({ color: 0x7cf8ff, transparent: true, opacity: 0.045, depthWrite: false })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(cx, 0.02, cz);
+    floor.renderOrder = 2;
+    g.add(floor);
+
+    // Líneas de rejilla cada 4 m
+    const pts = [];
+    for (let x = BUILD_X0; x <= BUILD_X1 + 0.01; x += 4) {
+      pts.push(x, 0.035, BUILD_Z0, x, 0.035, BUILD_Z1);
+    }
+    for (let z = BUILD_Z0; z <= BUILD_Z1 + 0.01; z += 4) {
+      pts.push(BUILD_X0, 0.035, z, BUILD_X1, 0.035, z);
+    }
+    const ggeo = new THREE.BufferGeometry();
+    ggeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    const grid = new THREE.LineSegments(ggeo, new THREE.LineBasicMaterial({ color: 0x7cf8ff, transparent: true, opacity: 0.14, depthWrite: false }));
+    grid.renderOrder = 3;
+    g.add(grid);
+
+    // Perímetro resaltado
+    const bb = [[BUILD_X0, BUILD_Z0], [BUILD_X1, BUILD_Z0], [BUILD_X1, BUILD_Z1], [BUILD_X0, BUILD_Z1], [BUILD_X0, BUILD_Z0]];
+    const bpts = [];
+    for (let i = 0; i < bb.length - 1; i++) {
+      bpts.push(bb[i][0], 0.04, bb[i][1], bb[i + 1][0], 0.04, bb[i + 1][1]);
+    }
+    const bgeo = new THREE.BufferGeometry();
+    bgeo.setAttribute('position', new THREE.Float32BufferAttribute(bpts, 3));
+    const border = new THREE.LineSegments(bgeo, new THREE.LineBasicMaterial({ color: 0xffb84c, transparent: true, opacity: 0.55, depthWrite: false }));
+    border.renderOrder = 3;
+    g.add(border);
+
+    g.visible = false;
+    this.editorOverlay = g;
+    this.scene.add(g);
+
+    // Retícula de punto exacto (anillo + cruz + punto central)
+    const ret = new THREE.Group();
+    ret.name = 'fenceAimReticle';
+    this.reticleMat = new THREE.MeshBasicMaterial({ color: 0x7cf8ff, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.72, 32), this.reticleMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.09;
+    ring.renderOrder = 4;
+    ret.add(ring);
+    const dot = new THREE.Mesh(new THREE.CircleGeometry(0.11, 12), this.reticleMat);
+    dot.rotation.x = -Math.PI / 2;
+    dot.position.y = 0.09;
+    dot.renderOrder = 4;
+    ret.add(dot);
+    for (let i = 0; i < 2; i++) {
+      const tick = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.055), this.reticleMat);
+      tick.rotation.x = -Math.PI / 2;
+      tick.rotation.z = i * Math.PI / 2;
+      tick.position.y = 0.085;
+      tick.renderOrder = 4;
+      ret.add(tick);
+    }
+    ret.visible = false;
+    this.aimReticle = ret;
+    this.scene.add(ret);
+  }
+
+  setEditorOverlay(v) {
+    if (this.editorOverlay) this.editorOverlay.visible = !!v;
+    if (this.aimReticle && !v) this.aimReticle.visible = false;
+  }
+
+  setReticle(x, z, valid) {
+    const r = this.aimReticle;
+    if (!r) return;
+    r.visible = true;
+    r.position.set(x, 0, z);
+    if (this.reticleMat) this.reticleMat.color.setHex(valid ? 0x7cf8ff : 0xff5470);
+  }
+
+  // Distancia punto-segmento en el plano XZ (para colisiones de vallas)
+  ptSegDist2D(px, pz, ax, az, bx, bz) {
+    const abx = bx - ax, abz = bz - az;
+    const apx = px - ax, apz = pz - az;
+    const len2 = abx * abx + abz * abz;
+    let t = len2 > 1e-9 ? (apx * abx + apz * abz) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const dx = px - (ax + abx * t), dz = pz - (az + abz * t);
+    return Math.hypot(dx, dz);
+  }
+
+  // ¿Puede colocarse una valla nueva en (x, z) con esa rotación/anchura?
+  // Rechaza solapamientos con vallas ya colocadas (capas base y personalizadas).
+  isFenceSpotFree(x, z, rot, width, depth) {
+    if (!this.placedFences || !this.placedFences.length) return true;
+    const dx = Math.cos(rot || 0), dz = Math.sin(rot || 0);
+    const hL = (width || 4) * 0.5;
+    const px0 = x - dx * hL, pz0 = z - dz * hL;
+    const px1 = x + dx * hL, pz1 = z + dz * hL;
+    const N = 9;
+    for (let i = 0; i < N; i++) {
+      const t = i / (N - 1);
+      const sx = px0 + (px1 - px0) * t;
+      const sz = pz0 + (pz1 - pz0) * t;
+      for (const f of this.placedFences) {
+        if (!f.alive) continue;
+        const fdx = Math.cos(f.rotation || 0), fdz = Math.sin(f.rotation || 0);
+        const fL = (f.width || 4) * 0.5;
+        const qx0 = f.x - fdx * fL, qz0 = f.z - fdz * fL;
+        const qx1 = f.x + fdx * fL, qz1 = f.z + fdz * fL;
+        const d = this.ptSegDist2D(sx, sz, qx0, qz0, qx1, qz1);
+        const gap = ((depth || 0.5) + (f.depth || 0.5)) * 0.5 + 0.35;
+        if (d < gap) return false;
+      }
+    }
+    return true;
   }
 
   // ---------- luces base ----------
@@ -349,6 +484,7 @@ export class World {
         x, z: fz,
         rotation: 0,
         width: stepW,
+        depth: (FENCE_CATALOG[modelType] && FENCE_CATALOG[modelType].depth) || 0.5,
         mesh,
         baseY: 0,
         tiltDir: Math.random() < 0.5 ? 1 : -1,
@@ -378,6 +514,7 @@ export class World {
       x, z,
       rotation,
       width: cfg.width,
+      depth: cfg.depth || 0.5,
       mesh,
       baseY: 0,
       tiltDir: Math.random() < 0.5 ? 1 : -1,
@@ -390,14 +527,18 @@ export class World {
     return fenceObj;
   }
 
-  // Elimina una valla colocada
+  // Elimina una valla colocada (la marca como muerta para que los asaltantes
+  // que la estén atacando dejen de golpearla)
   removePlacedFence(fenceObj) {
     const idx = this.placedFences.indexOf(fenceObj);
     if (idx >= 0) this.placedFences.splice(idx, 1);
+    if (fenceObj) fenceObj.alive = false;
     if (fenceObj.mesh) this.fence3DGroup.remove(fenceObj.mesh);
   }
 
-  // Muestra el holograma de previsualización para colocar vallas
+  // Muestra el holograma de previsualización para colocar vallas.
+  // El holograma y la retícula de suelo van SIEMPRE en el mismo punto exacto,
+  // que es el punto donde realmente se colocará la valla al hacer clic/tocar.
   setHologram(type, x, z, rotation, isValid) {
     while (this.hologramGroup.children.length) {
       this.hologramGroup.remove(this.hologramGroup.children[0]);
@@ -409,6 +550,7 @@ export class World {
       this.hologramGroup.add(holo);
       this.hologramGroup.visible = true;
     }
+    this.setReticle(x, z, isValid);
   }
 
   clearHologram() {
@@ -416,6 +558,7 @@ export class World {
     while (this.hologramGroup.children.length) {
       this.hologramGroup.remove(this.hologramGroup.children[0]);
     }
+    if (this.aimReticle) this.aimReticle.visible = false;
   }
   fenceVisual(frac) {
     const fracs = Array.isArray(frac) ? frac : [frac, frac, frac];

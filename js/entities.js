@@ -218,6 +218,9 @@ export class Entities {
     let bodyH = 2.2 * cfg.scale;
     let hasMelee = false;
     let bossName = cfg.name;
+    let gltfRoot = null;      // raíz del modelo GLTF (para el mixer de animación)
+    let mixer = null;         // AnimationMixer real (si el modelo trae un clip con claves)
+    let action = null;
 
     const markerMat = new THREE.MeshBasicMaterial({ color: cfg.eye, transparent: true, opacity: 0 });
     const threatMarker = new THREE.Mesh(new THREE.OctahedronGeometry(type === 'boss' ? 0.45 : 0.24, 0), markerMat);
@@ -226,6 +229,7 @@ export class Entities {
       const bVar = bossVariant || (Math.random() < 0.5 ? 'carnotaurus' : 'titanosaurus');
       const gltfMesh = models.createEnemy(bVar);
       if (gltfMesh) {
+        gltfRoot = gltfMesh;
         g.add(gltfMesh);
         if (bVar === 'carnotaurus') {
           headY = 5.2; headZ = 4.2; headR = 0.95; bodyR = 2.4; bodyH = 5.8;
@@ -247,6 +251,7 @@ export class Entities {
       // Sustituir con modelos de /resources/asaltantes
       const gltfMesh = models.createEnemy(type);
       if (gltfMesh) {
+        gltfRoot = gltfMesh;
         g.add(gltfMesh);
         const catCfg = ENEMY_CATALOG[type] || ENEMY_CATALOG.normal;
         headY = catCfg.headY;
@@ -297,7 +302,108 @@ export class Entities {
     threatMarker.position.set(0, headY + 0.85, headZ);
     g.add(threatMarker);
 
-    return { g, head, threatMarker, markerMat, hasMelee, headY, headZ, headR, bodyR, bodyH, bossName };
+    // Animación real del modelo (si el GLTF trae un clip con más de una clave,
+    // p.ej. un walk de Mixamo): un AnimationMixer sobre la raíz clonada.
+    // Los modelos actuales son poses estáticas, así que aquí predomina la marcha
+    // procedural (applyWalk), pero el soporte queda listo para modelos animados.
+    if (gltfRoot) {
+      const clip = models.getAnimation(type === 'boss' ? (bossName === 'CARNOTAURUS' ? 'carnotaurus' : 'titanosaurus') : type);
+      if (clip) {
+        try {
+          mixer = new THREE.AnimationMixer(gltfRoot);
+          action = mixer.clipAction(clip);
+          action.setLoop(THREE.LoopRepeat, Infinity);
+          action.play();
+        } catch (e) { mixer = null; action = null; }
+      }
+    }
+
+    return { g, head, threatMarker, markerMat, hasMelee, headY, headZ, headR, bodyR, bodyH, bossName, mixer, action };
+  }
+
+  // ---------- MARCHA PROCEDURAL (los modelos insertados caminan) ----------
+  // Los modelos GLTF actuales no incluyen ciclo de andar, así que la "caminata"
+  // se aplica sobre el grupo completo: balanceo vertical al paso, oscilación
+  // lateral de cadera, inclinación del torso hacia delante y cabeceo. La fase se
+  // acumula con la distancia REAL recorrida en el frame, por lo que la cadencia
+  // acompaña al paso de cada asaltante (corredores pisan más rápido, jefes más
+  // lento y pesado) y se detiene con suavidad al frenar contra una valla.
+  applyWalk(z, dt, stepDist, dxMove, dzMove) {
+    const g = z.g;
+    const isBoss = z.type === 'boss';
+
+    // 1) Fase de paso: 2π por ciclo completo (2 zancadas)
+    const stride = isBoss
+      ? (z.bossVariant === 'titanosaurus' ? 5.5 : 2.6)
+      : (z.type === 'runner' ? 1.2 : 0.95);
+    z.walkPhase = (z.walkPhase || 0) + (stepDist / Math.max(0.2, stride)) * Math.PI;
+
+    // 2) Amplitud con fundido (no se "congela" en seco al detenerse)
+    const moving = stepDist > 1e-4;
+    z.walkAmp = (z.walkAmp || 0) + ((moving ? 1 : 0) - (z.walkAmp || 0)) * Math.min(1, dt * 5);
+    const amp = z.walkAmp;
+    const ph = z.walkPhase || 0;
+
+    // 3) Dirección suavizada de la marcha (mira hacia donde avanza)
+    if (moving) {
+      const dl = Math.hypot(dxMove, dzMove) || 1;
+      const ndx = dxMove / dl, ndz = dzMove / dl;
+      if (z.moveDX === undefined) { z.moveDX = ndx; z.moveDZ = ndz; }
+      else { z.moveDX = z.moveDX * 0.82 + ndx * 0.18; z.moveDZ = z.moveDZ * 0.82 + ndz * 0.18; }
+      const ml = Math.hypot(z.moveDX, z.moveDZ) || 1;
+      z.moveDX /= ml; z.moveDZ /= ml;
+    }
+    const fdx = z.moveDX || 0, fdz = z.moveDZ || 1;
+
+    // 4) Parámetros por tipo (zombis de arrastre, corredor presuroso, jefes)
+    let bobAmp, swayAmp, pitchOsc, lean, wobble;
+    if (isBoss) {
+      if (z.bossVariant === 'titanosaurus') { bobAmp = 0.5; swayAmp = 0.03; pitchOsc = 0.02; lean = 0.0; wobble = 0.03; }
+      else { bobAmp = 0.85; swayAmp = 0.05; pitchOsc = 0.05; lean = 0.06; wobble = 0.05; }
+    } else if (z.type === 'runner') {
+      bobAmp = 0.16; swayAmp = 0.055; pitchOsc = 0.055; lean = 0.15; wobble = 0.11;
+    } else if (z.type === 'armored') {
+      bobAmp = 0.07; swayAmp = 0.03; pitchOsc = 0.03; lean = 0.09; wobble = 0.05;
+    } else if (z.type === 'explosive') {
+      bobAmp = 0.10; swayAmp = 0.04; pitchOsc = 0.04; lean = 0.10; wobble = 0.08;
+    } else if (z.type === 'climber') {
+      bobAmp = 0.12; swayAmp = 0.045; pitchOsc = 0.045; lean = 0.10; wobble = 0.09;
+    } else {
+      bobAmp = 0.11; swayAmp = 0.04; pitchOsc = 0.04; lean = 0.09; wobble = 0.08;
+    }
+
+    if (z.state === 'fence') {
+      // Postura de asalto a la valla: inclinación al golpeo (no hay pasos)
+      const atk = z.attackT > 0 ? 1 : 0;
+      z.atkAmp = (z.atkAmp || 0) + (atk - (z.atkAmp || 0)) * Math.min(1, dt * 12);
+      // Mirar a la valla (apuntado a su punto más cercano)
+      const fx0 = z.blockedX !== undefined ? z.blockedX : g.position.x;
+      const fz0 = z.blockedZ !== undefined ? z.blockedZ
+        : (z.blockedFence ? z.blockedFence.z : (z.fenceIndex >= 0 ? -1 : g.position.z));
+      const tyaw = Math.atan2(fx0 - g.position.x, fz0 - g.position.z);
+      let dy = tyaw - g.rotation.y;
+      while (dy > Math.PI) dy -= Math.PI * 2;
+      while (dy < -Math.PI) dy += Math.PI * 2;
+      g.rotation.y += dy * Math.min(1, dt * 8);
+      g.rotation.x = THREE.MathUtils.lerp(lean * 0.6, -0.42, z.atkAmp);
+      g.rotation.z = Math.sin(ph) * 0.03 * amp;
+      g.position.y = Math.abs(Math.sin(ph)) * 0.06 * z.atkAmp;
+      return;
+    }
+
+    // 5) Aplicar la marcha: balanceo al paso, cadera, torso, cabeceo
+    const bob = Math.abs(Math.sin(ph)) * bobAmp * amp;
+    const sway = Math.sin(ph) * swayAmp * amp;
+    const pitch = lean + Math.sin(ph) * pitchOsc * amp;
+    const yaw = Math.atan2(fdx, fdz) + Math.sin(ph * 0.5 + (z.phase || 0)) * wobble * (0.5 + amp * 0.5);
+
+    let dy = yaw - g.rotation.y;
+    while (dy > Math.PI) dy -= Math.PI * 2;
+    while (dy < -Math.PI) dy += Math.PI * 2;
+    g.rotation.y += dy * Math.min(1, dt * 8);
+    g.rotation.x = pitch;
+    g.rotation.z = sway;
+    g.position.y = bob;
   }
 
   pickRole(type, forceLand) {
@@ -313,7 +419,7 @@ export class Entities {
   spawn(type, x, z, opt) {
     const cfg = ZTYPES[type];
     const bossVariant = (opt && opt.bossVariant) || (Math.random() < 0.5 ? 'carnotaurus' : 'titanosaurus');
-    const { g, head, threatMarker, markerMat, hasMelee, headY, headZ, headR, bodyR, bodyH, bossName } = this.buildZombie(type, bossVariant);
+    const { g, head, threatMarker, markerMat, hasMelee, headY, headZ, headR, bodyR, bodyH, bossName, mixer, action } = this.buildZombie(type, bossVariant);
     const forceLand = !!(opt && opt.forceLand);
     const role = this.pickRole(type, forceLand);
     let sx = x, sz = z, state = 'advance';
@@ -351,10 +457,14 @@ export class Entities {
       headY, headZ, headR, bodyR, bodyH,
       state, phase: Math.random() * 7,
       lane: sx, attackT: 0, climbT: 0, summonT: 6,
-      fenceIndex: -1, climbFromZ: 0, climbToZ: 0, blockedFence: null,
+      fenceIndex: -1, climbFromZ: 0, climbToZ: 0, blockedFence: null, blockedX: undefined,
       embark, land, sailX, boat: null, boatT: 0, landT: 0,
       burnT: 0, shockT: 0, groanT: 3 + Math.random() * 9,
       dead: false, deathT: 0, flashT: 0,
+      // Estado de la marcha procedural
+      mixer, action,
+      walkPhase: Math.random() * Math.PI * 2, walkAmp: 0, atkAmp: 0,
+      moveDX: 0, moveDZ: 1,
     };
     if (type === 'boss') { this.boss = z0; }
     this.list.push(z0);
@@ -604,7 +714,10 @@ export class Entities {
       fences = fencesOrCtx.fences;
       placedFences = fencesOrCtx.placedFences || placedFencesArg;
     }
-    // Comprobar vallas 3D y personalizadas (soporta cualquier ángulo: vertical, horizontal, diagonal)
+    // Comprobar vallas 3D y personalizadas (soporta cualquier ángulo: vertical, horizontal, diagonal).
+    // Se elige SIEMPRE la valla viva más próxima por delante del asaltante (orden por
+    // distancia real, no por orden del array), para que no se salte vallas intermedias.
+    let best = null, bestAhead = 1e9;
     if (placedFences && placedFences.length) {
       for (let i = 0; i < placedFences.length; i++) {
         const f = placedFences[i];
@@ -614,16 +727,21 @@ export class Entities {
         const proj = THREE.MathUtils.clamp((gx - f.x) * dx + (gz - f.z) * dz, -hL, hL);
         const cx = f.x + proj * dx, cz = f.z + proj * dz;
         const dist = Math.hypot(gx - cx, gz - cz);
-        if (dist < 1.45 && cz >= gz - 0.6) {
-          return { fenceObj: f, fenceIndex: f.layerIndex !== undefined ? f.layerIndex : -1, z: cz, x: cx };
+        const ahead = cz - gz;
+        if (dist < 1.45 && ahead >= -0.6 && ahead < bestAhead) {
+          bestAhead = ahead;
+          best = { fenceObj: f, fenceIndex: f.layerIndex !== undefined ? f.layerIndex : -1, z: cz, x: cx };
         }
       }
     }
     const ni = this.nextFenceIndex(gz, fences);
     if (ni >= 0 && fences[ni] && fences[ni].alive !== false) {
-      return { fenceObj: null, fenceIndex: ni, z: FENCE_ZS[ni], x: gx };
+      const ahead = FENCE_ZS[ni] - gz;
+      if (ahead >= -0.6 && (best === null || ahead < bestAhead)) {
+        return { fenceObj: null, fenceIndex: ni, z: FENCE_ZS[ni], x: gx };
+      }
     }
-    return null;
+    return best;
   }
 
   damage(z, amount, opt) {
@@ -769,6 +887,9 @@ export class Entities {
         continue;
       }
 
+      // Posición previa al frame (para medir el paso real de la marcha)
+      const _px0 = g.position.x, _pz0 = g.position.z;
+
       if (z.threatMarker) {
         let distFence;
         if (z.role === 'sea' && (z.state === 'sail' || z.state === 'launch' || z.state === 'deploy' || z.state === 'to_shore')) {
@@ -847,10 +968,8 @@ export class Entities {
         g.position.x = THREE.MathUtils.clamp(g.position.x, FENCE_X0 - 1, FENCE_X1 + 1);
         const dz = target ? Math.sign(target.z - g.position.z) * 0.6 : 1;
         g.position.z += dz * dt * z.speed * slowed * (prey ? 0.9 : 1);
-        const bobSpeed = z.type === 'boss' ? (z.bossVariant === 'titanosaurus' ? 1.8 : 3.2) : (z.type === 'runner' ? 7 : 2.6);
-        const bobAmp = z.type === 'boss' ? (z.bossVariant === 'titanosaurus' ? 0.25 : 0.2) : (z.type === 'runner' ? 0.3 : 0.16);
-        g.position.y = Math.abs(Math.sin(t * bobSpeed + z.phase)) * bobAmp;
-        g.rotation.y = Math.sin(t * 1.4 + z.phase) * 0.12;
+        // Balanceo y orientación: la marcha procedural (applyWalk) los aplica al
+        // final del frame usando la distancia real recorrida.
         if (prey && g.position.distanceTo(prey.g.position) < 1.6) {
           prey.dead = true; prey.state = 'dead';
           const cp = prey.g.position.clone(); cp.y = 1.2;
@@ -877,6 +996,14 @@ export class Entities {
           // Sin vallas por delante: si ya rebasó la línea interior, invade la torre
           if (g.position.z >= FENCE_ZS[FENCE_ZS.length - 1] - 1.0) z.state = 'invade';
         } else if (g.position.z >= blocker.z - 1.5) {
+          // Punto de bloqueo = punto MÁS CERCANO del segmento de valla (funciona
+          // con vallas horizontales, verticales y diagonales). El zombi se queda
+          // a 1.2 m de ese punto, del lado por donde viene.
+          const bdx = g.position.x - blocker.x, bdz = g.position.z - blocker.z;
+          const bdl = Math.hypot(bdx, bdz) || 1;
+          z.blockedX = blocker.x; z.blockedZ = blocker.z;
+          z.stopX = blocker.x + (bdx / bdl) * 1.2;
+          z.stopZ = blocker.z + (bdz / bdl) * 1.2;
           if (z.role === 'climber' || z.type === 'climber') {
             z.state = 'climb'; z.climbT = 0; z.fenceIndex = blocker.fenceIndex;
             z.blockedFence = blocker.fenceObj;
@@ -892,10 +1019,16 @@ export class Entities {
         const bf = z.blockedFence;
         if (bf && !bf.alive) { z.state = 'advance'; z.blockedFence = null; continue; }
         if (!bf && (fi < 0 || !fences[fi] || fences[fi].alive === false)) { z.state = 'advance'; continue; }
-        const fz = bf ? bf.z : (fi >= 0 ? FENCE_ZS[fi] : g.position.z);
-        g.position.z += ((fz - 1.2) - g.position.z) * Math.min(1, dt * 4);
-        g.position.y = Math.abs(Math.sin(t * 5 + z.phase)) * 0.1;
-        g.rotation.x = attackAnim ? -0.35 : 0;
+        // Mantener la posición de asalto: 1.2 m delante del punto más cercano de
+        // la valla (funciona con cualquier orientación de la valla colocada)
+        if (z.stopX !== undefined) {
+          g.position.x += (z.stopX - g.position.x) * Math.min(1, dt * 4);
+          g.position.z += (z.stopZ - g.position.z) * Math.min(1, dt * 4);
+        } else {
+          const fz = bf ? bf.z : (fi >= 0 ? FENCE_ZS[fi] : g.position.z);
+          g.position.z += ((fz - 1.2) - g.position.z) * Math.min(1, dt * 4);
+        }
+        // La pose de asalto (inclinación al golpeo) la aplica applyWalk()
         z.fenceTick = (z.fenceTick || 0) + dt;
         if (z.fenceTick > 0.95) {
           z.fenceTick = 0; z.attackT = 0.35;
@@ -938,8 +1071,7 @@ export class Entities {
         } else {
           g.position.x += (ex / d) * dt * z.speed * slowed * 1.1;
           g.position.z += (ez / d) * dt * z.speed * slowed * 1.1;
-          g.position.y = Math.abs(Math.sin(t * 3 + z.phase)) * 0.16;
-          g.rotation.y = Math.atan2(ex, ez);
+          // balanceo/orientación: applyWalk()
         }
       } else if (z.state === 'deploy') {
         // 3 s para poner la lancha en el agua
@@ -1013,6 +1145,7 @@ export class Entities {
         const dx = pp.x - g.position.x, dz = dzAssault;
         const d = Math.hypot(dx, dz);
         if (!z.siegeWarned) { z.siegeWarned = true; H.towerSiege && H.towerSiege(z); }
+        z.sieging = (d <= 3);
         if (prey) {
           g.position.x += Math.sign(prey.g.position.x - g.position.x) * dt * z.speed * slowed;
           g.position.z += Math.sign(prey.g.position.z - g.position.z) * dt * z.speed * slowed;
@@ -1026,17 +1159,33 @@ export class Entities {
         } else if (d > 3) {
           g.position.x += (dx / d) * dt * z.speed * slowed;
           g.position.z += (dz / d) * dt * z.speed * slowed;
-          g.position.y = Math.abs(Math.sin(t * 3.2 + z.phase)) * 0.18;
+          // balanceo: applyWalk()
         } else {
           z.attackT = z.attackT > 0 ? z.attackT : 0;
           z.playerTick = (z.playerTick || 0) + dt;
           g.rotation.x = -0.3;
+          g.position.y = 0;
           if (z.playerTick > 1.0) {
             z.playerTick = 0; z.attackT = 0.4;
             H.playerDamage && H.playerDamage(z.dmg, z);
           }
         }
-        g.rotation.y = Math.atan2(dx, dz);
+        if (z.sieging) {
+          // Asaltando la torre: mirar a los pilares (la marcha no interfiere)
+          let dy = Math.atan2(dx, dz) - g.rotation.y;
+          while (dy > Math.PI) dy -= Math.PI * 2;
+          while (dy < -Math.PI) dy += Math.PI * 2;
+          g.rotation.y += dy * Math.min(1, dt * 8);
+        }
+      }
+
+      // ---- MARCHA: animación real (mixer) + marcha procedural de las piernas/torso ----
+      if (z.mixer) z.mixer.update(dt);
+      const walking = z.state === 'advance' || z.state === 'fence' || z.state === 'to_shore' || (z.state === 'invade' && !z.sieging);
+      if (walking && !z.dead) {
+        this.applyWalk(z, dt,
+          Math.hypot(g.position.x - _px0, g.position.z - _pz0),
+          g.position.x - _px0, g.position.z - _pz0);
       }
     }
 

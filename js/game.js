@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { AudioEngine } from './audio.js';
 import { FX } from './fx.js';
-import { World, SNIPER_EYE, PARAPET_TOP, SHORE_X, FENCE_ZS, FENCE_X0, FENCE_X1, FENCE_LABELS } from './world.js';
+import { World, SNIPER_EYE, PARAPET_TOP, SHORE_X, FENCE_ZS, FENCE_X0, FENCE_X1, FENCE_LABELS, BUILD_X0, BUILD_X1, BUILD_Z0, BUILD_Z1 } from './world.js';
 import { Entities, ZTYPES, BOAT_COST, BOAT_MAX } from './entities.js';
 import { FENCE_CATALOG, ENEMY_CATALOG, models } from './models.js';
 
@@ -51,7 +51,8 @@ const S = {
   killsTimes: [], streakBest: 0, explosiveKills: 0, headWave: 0, killsWave: 0, civsLostWave: 0,
   objectives: [], pendingSpawns: [], spawnT: 0,
   _lastTurretAlert: 0, _lastSiegeAlert: 0,
-  settings: { sens: 1, master: 80, music: 55, sfx: 90, quality: 'high', voice: 'on' },
+  // invertX/invertY: por defecto NO se invierte ninguna dirección (ratón normal).
+  settings: { sens: 1, master: 80, music: 55, sfx: 90, quality: 'high', voice: 'on', invertX: false, invertY: false },
 };
 try {
   const b = JSON.parse(localStorage.getItem('frtd_best_v1') || '0'); S.best = b | 0;
@@ -82,8 +83,11 @@ function fenceAvg() {
     sum += f.alive ? (f.hp / f.max) : 0;
     count++;
   }
-  if (world && world.placedFences && world.placedFences.length > 0) {
+  // Solo vallas PERSONALIZADAS (las 3 capas base ya están contadas en S.fences;
+  // sus segmentos 3D viven en placedFences con layerIndex >= 0)
+  if (world && world.placedFences) {
     for (const pf of world.placedFences) {
+      if (pf.layerIndex >= 0) continue;
       sum += pf.alive ? (pf.hp / pf.maxHp) : 0;
       count++;
     }
@@ -92,8 +96,22 @@ function fenceAvg() {
 }
 function fencesAllFull() {
   const baseFull = S.fences.every(f => f.alive && f.hp >= f.max);
-  const placedFull = !world || !world.placedFences || !world.placedFences.length || world.placedFences.every(f => f.alive && f.hp >= f.maxHp);
+  const placedFull = !world || !world.placedFences || !world.placedFences.some(f => f.layerIndex < 0)
+    || world.placedFences.filter(f => f.layerIndex < 0).every(f => f.alive && f.hp >= f.maxHp);
   return baseFull && placedFull;
+}
+// Daño a vallas personalizadas (editor de vallado): piedras, golpes cuerpo a
+// cuerpo y explosivos del enemigo las deterioran igual que a las capas base.
+function damagePlacedFence(pf, amount) {
+  if (!pf || !pf.alive) return;
+  pf.hp = Math.max(0, pf.hp - amount);
+  if (Math.random() < 0.5) audio.fenceHit();
+  if (pf.hp <= 0 && pf.alive) {
+    pf.alive = false;
+    toast('⚠ VALLA DEL PERÍMETRO DERRIBADA ⚠');
+    radio('Una valla del perímetro ha sido derribada por el enemigo. Repárala con F o el editor.', 'Valla derribada.');
+    audio.alarm();
+  }
 }
 
 // ---------------- three base ----------------
@@ -128,15 +146,52 @@ const world = new World(scene, camera, renderer);
 const ent = new Entities(scene, fx, {
   fenceDamage(amount, pos, fenceIndex) {
     if (!S.playing || S.paused) return;
-    let idx = (fenceIndex !== undefined && fenceIndex !== null) ? fenceIndex : -1;
-    if (idx < 0 && pos) {
-      // Sin capa indicada: dañar la capa intacta más cercana al impacto
-      let bd = 1e9;
+    const idx = (fenceIndex !== undefined && fenceIndex !== null) ? fenceIndex : -1;
+    // 1) Sin capa base indicada: si el impacto está junto a una valla colocada
+    //    (editor de vallado), dañar ESA valla y no a las capas fijas.
+    if (idx < 0 && pos && world.placedFences) {
+      let best = null, bd = 2.4;
+      for (const pf of world.placedFences) {
+        if (!pf.alive) continue;
+        const fdx = Math.cos(pf.rotation || 0), fdz = Math.sin(pf.rotation || 0);
+        const fL = (pf.width || 4) * 0.5;
+        const qx0 = pf.x - fdx * fL, qz0 = pf.z - fdz * fL;
+        const qx1 = pf.x + fdx * fL, qz1 = pf.z + fdz * fL;
+        const d = world.ptSegDist2D(pos.x, pos.z, qx0, qz0, qx1, qz1);
+        if (d < bd) { bd = d; best = pf; }
+      }
+      if (best) { damagePlacedFence(best, amount); return; }
+      // Sin valla cercana: dañar la capa base intacta más próxima al impacto
+      let b2 = 1e9;
+      let baseIdx = -1;
       S.fences.forEach((f, i) => {
         if (!f.alive) return;
         const d = Math.abs(pos.z - f.z);
-        if (d < bd) { bd = d; idx = i; }
+        if (d < b2) { b2 = d; baseIdx = i; }
       });
+      if (baseIdx < 0) return;
+      const F = S.fences[baseIdx];
+      F.hp = Math.max(0, F.hp - amount);
+      if (pos) fx.sparkHit(pos.clone().setY(2.5));
+      if (Math.random() < 0.5) audio.fenceHit();
+      if (F.hp <= 0 && F.alive) {
+        F.alive = false;
+        F.hp = 0;
+        const fallen = S.fences.filter(f => !f.alive).length;
+        if (fallen >= S.fences.length) {
+          toast('⚠ TODAS LAS VALLAS HAN CAÍDO ⚠');
+          radio('¡Todas las vallas han caído! ¡Repáralas con F o nos superan!', 'Todas las vallas han caído. Repáralas.');
+        } else {
+          toast(`⚠ VALLA ${F.label} DERRIBADA (${fallen}/${S.fences.length}) ⚠`);
+          radio(`¡La valla ${F.label.toLowerCase()} ha caído! Quedan ${S.fences.length - fallen} capas.`, `Valla ${F.label.toLowerCase()} caída.`);
+        }
+        audio.alarm(); audio.siren(1);
+      } else if (F.hp < F.max * 0.3 && !F._warned) {
+        F._warned = true;
+        radio(`La valla ${F.label.toLowerCase()} está al treinta por ciento. Necesita reparación.`, `Valla ${F.label.toLowerCase()} al treinta por ciento.`);
+      }
+      if (F.hp >= F.max * 0.35) F._warned = false;
+      return;
     }
     if (idx < 0 || !S.fences[idx] || !S.fences[idx].alive) return;
     const F = S.fences[idx];
@@ -480,7 +535,7 @@ function endWave() {
   renderObjectives();
   for (const f of S.fences) { if (f.alive) { f.hp = Math.min(f.max, f.hp + 15); if (f.hp >= f.max * 0.35) f._warned = false; } }
   if (world.placedFences) {
-    for (const pf of world.placedFences) { if (pf.alive) pf.hp = Math.min(pf.maxHp, pf.hp + 20); }
+    for (const pf of world.placedFences) { if (pf.layerIndex < 0 && pf.alive) pf.hp = Math.min(pf.maxHp, pf.hp + 20); }
   }
   S.hp = Math.min(100, S.hp + 25);
   S.intermission = true;
@@ -778,6 +833,19 @@ function explode(p, radius, dmg, opt) {
         ent.hooks.fenceDamage(dmg * 0.9, p, i);
       }
     });
+    // Vallas personalizadas del perímetro: mismo criterio de radio
+    if (world.placedFences) {
+      for (const pf of world.placedFences) {
+        if (!pf.alive) continue;
+        const fdx = Math.cos(pf.rotation || 0), fdz = Math.sin(pf.rotation || 0);
+        const fL = (pf.width || 4) * 0.5;
+        const qx0 = pf.x - fdx * fL, qz0 = pf.z - fdz * fL;
+        const qx1 = pf.x + fdx * fL, qz1 = pf.z + fdz * fL;
+        if (world.ptSegDist2D(p.x, p.z, qx0, qz0, qx1, qz1) < radius) {
+          damagePlacedFence(pf, dmg * 0.9);
+        }
+      }
+    }
   }
   if (opt.player && dCam < radius) {
     ent.hooks.playerDamage(Math.round(dmg * 0.5));
@@ -891,6 +959,7 @@ function repairFence() {
   }
   if (world.placedFences) {
     for (const pf of world.placedFences) {
+      if (pf.layerIndex >= 0) continue; // las capas base se reparan arriba (S.fences)
       if (!pf.alive) {
         pf.alive = true;
         pf.hp = Math.round(pf.maxHp * 0.4);
@@ -922,10 +991,13 @@ function openFenceEditor() {
   if (!S.playing || S.paused) return;
   S.fenceEditMode = true;
   setZoom(false); // Quitar mira telescópica en el editor
+  releaseLock();  // en el editor el cursor debe verse (hay botones que tocar)
   const fe = $('fenceEditorHUD');
   if (fe) fe.classList.remove('hidden');
+  if (world.setEditorOverlay) world.setEditorOverlay(true); // zona construible + retícula
+  updateCursorState();
   updateFenceEditorUI();
-  toast('MODO EDICIÓN DE VALLADO // INGENIERÍA DEFENSIVA');
+  toast('MODO EDICIÓN DE VALLADO // COLOCA EN LA RETÍCULA');
   audio.click();
 }
 
@@ -934,12 +1006,34 @@ function closeFenceEditor() {
   const fe = $('fenceEditorHUD');
   if (fe) fe.classList.add('hidden');
   if (world.clearHologram) world.clearHologram();
+  if (world.setEditorOverlay) world.setEditorOverlay(false);
+  updateCursorState();
+  if (lockAllowed()) requestLock(); // de vuelta al combate: re-enganchar el puntero
   audio.click();
 }
 
 function toggleFenceEditor() {
   if (S.fenceEditMode) closeFenceEditor();
   else openFenceEditor();
+}
+
+// Punto EXACTO de colocación: intersección del rayo del centro de la pantalla
+// (sin dispersión de arma) con el suelo. Si la vista se dispara por encima del
+// horizonte, se mantiene el último punto válido (pegajoso) para no perder la
+// retícula y poder colocar con precisión.
+const fenceAimPoint = new THREE.Vector3(3, 0, -8);
+function computeFenceAimPoint(out) {
+  camera.getWorldDirection(_dir);
+  _o.copy(camera.position);
+  if (_dir.y < -0.005) {
+    const t = (0.2 - _o.y) / _dir.y;
+    if (t > 0.5 && t < 230) {
+      out.copy(_o).addScaledVector(_dir, t);
+      fenceAimPoint.copy(out);
+      return out;
+    }
+  }
+  return out.copy(fenceAimPoint);
 }
 
 function extendIntermissionTime(seconds = 30, cost = 50) {
@@ -995,18 +1089,28 @@ function setFenceTool(tool) {
 function updateFenceEditorUI() {
   const sc = $('feScore'), tm = $('feTimer');
   if (sc) sc.textContent = S.score;
-  if (tm) tm.textContent = Math.max(0, Math.ceil(S.interT)) + 's';
+  if (tm) tm.textContent = S.intermission ? Math.max(0, Math.ceil(S.interT)) + 's' : 'EN COMBATE';
+  const pb = $('fePlaceBtn');
+  if (pb) {
+    if (S.fenceTool === 'build') {
+      const cfg = FENCE_CATALOG[S.selectedFenceModel] || FENCE_CATALOG.chain_link;
+      pb.disabled = S.score < cfg.cost;
+    } else {
+      pb.disabled = false;
+    }
+  }
 }
 
 function handleFenceEditorClick() {
-  const p = new THREE.Vector3();
-  groundAim(p);
-  if (!p || p.lengthSq() === 0) return;
+  if (!S.fenceEditMode) return;
+  const p = computeFenceAimPoint(new THREE.Vector3());
 
-  // Comprobar límites defensivos: desde la costa (SHORE_X = -26) hasta el muro derecho (FENCE_X1 = 32)
-  if (p.x < FENCE_X0 || p.x > FENCE_X1 || p.z < -30 || p.z > 8) {
+  // Límites de la zona construible: todo el corredor terrestre por donde
+  // avanzan los infectados (costa x=-26 → muro este x=+32, horizonte z=-45 → sacos z=+12)
+  const inBounds = (p.x >= BUILD_X0 && p.x <= BUILD_X1 && p.z >= BUILD_Z0 && p.z <= BUILD_Z1);
+  if (!inBounds) {
     audio.denied();
-    toast('FUERA DE LOS LÍMITES PERMITIDOS (-26m A +32m)');
+    toast('FUERA DE LA ZONA DE CONSTRUCCIÓN');
     return;
   }
 
@@ -1017,17 +1121,26 @@ function handleFenceEditorClick() {
       toast(`PUNTOS INSUFICIENTES (SE REQUIEREN ${cfg.cost} PTS)`);
       return;
     }
-    S.score -= cfg.cost;
-    const added = world.addPlacedFence(S.selectedFenceModel, p.x, p.z, S.fenceRotationAngle, cfg.hp, cfg.hp);
-    if (added) {
-      audio.buy();
-      fx.sparkHit(p.clone().setY(1.0));
-      toast(`VALLA COLOCADA // ${cfg.name.toUpperCase()} (-${cfg.cost} PTS)`);
+    if (!world.isFenceSpotFree(p.x, p.z, S.fenceRotationAngle, cfg.width, cfg.depth)) {
+      audio.denied();
+      toast('ZONA OCUPADA: DESPLAZA LA RETÍCULA');
+      return;
     }
+    const added = world.addPlacedFence(S.selectedFenceModel, p.x, p.z, S.fenceRotationAngle, cfg.hp, cfg.hp);
+    if (!added) {
+      audio.denied();
+      toast('MODELO DE VALLA AÚN EN CARGA · INTENTA DE NUEVO');
+      return;
+    }
+    S.score -= cfg.cost; // los puntos solo se descuentan si la valla se colocó
+    audio.buy();
+    fx.sparkHit(p.clone().setY(1.0));
+    toast(`VALLA COLOCADA // ${cfg.name.toUpperCase()} (-${cfg.cost} PTS)`);
   } else if (S.fenceTool === 'demolish') {
-    // Buscar la valla personalizada más cercana
-    let best = null, bestD = 3.5;
+    // Buscar la valla personalizada más cercana (las 3 capas base no se demuelen)
+    let best = null, bestD = 4.0;
     for (const f of world.placedFences) {
+      if (f.layerIndex >= 0) continue;
       const d = Math.hypot(f.x - p.x, f.z - p.z);
       if (d < bestD) { bestD = d; best = f; }
     }
@@ -1040,7 +1153,7 @@ function handleFenceEditorClick() {
       fx.dirtBurst(p);
       toast(`VALLA DEMOLIDA // +${refund} PTS RECUPERADOS`);
     } else {
-      toast('NO HAY NINGUNA VALLA EN ESTA POSICIÓN');
+      toast('SIN VALLA PERSONALIZADA EN ESE PUNTO');
       audio.denied();
     }
   } else if (S.fenceTool === 'repair') {
@@ -1204,6 +1317,8 @@ function openShop() {
   if (!S.playing) return;
   S.shopOpen = true; S.paused = true;
   setZoom(false);   // la mira no debe quedarse encima del arsenal
+  releaseLock();    // la tienda necesita el cursor
+  updateCursorState();
   audio.suspend();
   const sm = $('shopMenu');
   if (sm) sm.classList.remove('hidden');
@@ -1214,6 +1329,8 @@ function closeShop() {
   const sm = $('shopMenu');
   if (sm) sm.classList.add('hidden');
   if (S.screen === 'game') { S.paused = false; audio.resume(); }
+  updateCursorState();
+  if (lockAllowed()) requestLock();
 }
 function renderShop() {
   const ss = $('shopScore');
@@ -1309,6 +1426,10 @@ function startGame(fresh) {
       const el = $(id);
       if (el) el.classList.add('hidden');
     }
+    // Partida nueva: vista inicial mirando el corredor defensivo
+    camYaw = 0; camPitch = CAM_BASE_PITCH;
+    updateCursorState();
+    requestLock(); // el clic de INICIAR/CONTINUAR/REINTENTAR es gesto de usuario
     radio('Aquí Puesto de Mando: posición elevada asegurada. Mantén la línea.', 'Posición de francotirador asegurada. Buena caza.');
     startWave(S.wave);
   }catch(e){
@@ -1328,7 +1449,9 @@ function gameOver() {
   if (!S.playing) return;
   S.playing = false; S.screen = 'over';
   setZoom(false);
+  releaseLock();
   if (S.fenceEditMode) closeFenceEditor();
+  updateCursorState();
   clearSave();
   try { speechSynthesis.cancel(); } catch (e) {}
   audio.siren(2);
@@ -1349,7 +1472,9 @@ function gameOver() {
 function toMenu() {
   S.screen = 'menu'; S.playing = false; S.paused = false; S.shopOpen = false;
   setZoom(false);
+  releaseLock();
   if (S.fenceEditMode) closeFenceEditor();
+  updateCursorState();
   audio.resume();
   for (const id of ['pauseMenu', 'over', 'settingsMenu', 'shopMenu', 'helpMenu']) {
     const el = $(id); if (el) el.classList.add('hidden');
@@ -1372,6 +1497,8 @@ function pauseGame() {
   if (S.shopOpen) { closeShop(); return; }
   S.paused = true;
   setZoom(false);   // la mira no debe quedarse encima del menú de pausa
+  releaseLock();    // el menú de pausa necesita el cursor visible
+  updateCursorState();
   audio.suspend();
   try { speechSynthesis.cancel(); } catch (e) {}
   const pm = $('pauseMenu');
@@ -1384,6 +1511,8 @@ function resumeGame() {
   for (const id of ['pauseMenu', 'shopMenu', 'settingsMenu']) {
     const el = $(id); if (el) el.classList.add('hidden');
   }
+  updateCursorState();
+  if (lockAllowed()) requestLock();
 }
 
 // ---------------- ajustes ----------------
@@ -1411,6 +1540,10 @@ function applySettingsToUI() {
   if (ssf) ssf.value = S.settings.sfx; if (sfv) sfv.textContent = S.settings.sfx;
   const sq = $('setQuality'); if (sq) sq.value = S.settings.quality;
   const svo = $('setVoice'); if (svo) svo.value = S.settings.voice;
+  const sxi = $('setInvertX'); if (sxi) sxi.checked = !!S.settings.invertX;
+  const syi = $('setInvertY'); if (syi) syi.checked = !!S.settings.invertY;
+  const vxi = $('invertXVal'); if (vxi) vxi.textContent = S.settings.invertX ? 'SÍ' : 'NO';
+  const vyi = $('invertYVal'); if (vyi) vyi.textContent = S.settings.invertY ? 'SÍ' : 'NO';
 }
 function applyQuality() {
   world.setQuality(S.settings.quality);
@@ -1453,14 +1586,21 @@ if (isTouchDevice) document.body.classList.add('is-touch');
 
 // Ratón en PC
 addEventListener('mousemove', e => {
+  // S.aim se conserva por compatibilidad (debug), pero la cámara usa la
+  // puntería RELATIVA 360° (applyLook) con la misma convención que el ratón
+  // normal: derecha = mira a la derecha, arriba = mira hacia arriba.
   S.aim.x = (e.clientX / innerWidth) * 2 - 1;
   S.aim.y = -((e.clientY / innerHeight) * 2 - 1);
+  if (isTouchDevice) return;
+  if (!S.playing || S.paused || S.screen !== 'game') return;
+  const dx = e.movementX || 0, dy = e.movementY || 0;
+  if (dx || dy) applyLook(dx, dy, false);
 });
 cvs.addEventListener('mousedown', e => {
-  if (S.fenceEditMode) {
-    if (e.button === 0) { handleFenceEditorClick(); return; }
-    if (e.button === 2) { cycleFenceRotation(); return; }
-  }
+  if (e.button === 0 && S.fenceEditMode) { handleFenceEditorClick(); return; }
+  if (e.button === 2 && S.fenceEditMode) { cycleFenceRotation(); return; }
+  // Re-enganchar el puntero si se había soltado (por ejemplo tras mantener ALT)
+  if (!isTouchDevice && !pointerLocked && lockAllowed()) requestLock();
   if (e.button === 0) { S.firing = true; tryFire(); }
   if (e.button === 2) setZoom(true);
 });
@@ -1485,6 +1625,15 @@ addEventListener('wheel', e => {
 
 // Teclado en PC
 addEventListener('keydown', e => {
+  // ALT (PC): muestra el cursor mientras se mantiene pulsado
+  if (e.code === 'AltLeft' || e.code === 'AltRight' || e.code === 'AltGraph') {
+    if (!altHeld) {
+      altHeld = true;
+      if (pointerLocked) releaseLock();
+      updateCursorState();
+    }
+    return;
+  }
   if (e.repeat) return;
   const k = e.code;
   if (k === 'Space') { e.preventDefault(); setZoom(true); }
@@ -1539,11 +1688,22 @@ addEventListener('keydown', e => {
   else if (k === 'KeyT') callStrike();
   else if (k === 'Enter' && S.intermission) startWave(S.wave + 1);
 });
-addEventListener('keyup', e => { if (e.code === 'Space') setZoom(false); });
+addEventListener('keyup', e => {
+  if (e.code === 'AltLeft' || e.code === 'AltRight' || e.code === 'AltGraph') {
+    if (altHeld) {
+      altHeld = false;
+      updateCursorState();
+      if (lockAllowed()) requestLock(); // re-enganchar el puntero (el gesto aún está activo)
+    }
+    return;
+  }
+  if (e.code === 'Space') setZoom(false);
+});
 
 // Controles táctiles adaptativos para Android - gestión robusta de tokens táctiles
 let touchStartX = 0, touchStartY = 0, isTouchAiming = false;
 let activeTouchId = null; // token del dedo que controla la puntería
+let touchTapX = 0, touchTapY = 0, touchTapT = 0, touchMoved = false;
 const aimPad = $('touchAimPad');
 if (aimPad) {
   aimPad.addEventListener('touchstart', e => {
@@ -1554,6 +1714,8 @@ if (aimPad) {
     if(!t) return;
     activeTouchId = t.identifier;
     touchStartX = t.clientX; touchStartY = t.clientY;
+    touchTapX = t.clientX; touchTapY = t.clientY; touchTapT = performance.now();
+    touchMoved = false;
     isTouchAiming = true;
   }, { passive: false });
 
@@ -1568,16 +1730,22 @@ if (aimPad) {
     if(!found) return;
     const dx = found.clientX - touchStartX;
     const dy = found.clientY - touchStartY;
+    // Distinguir TOC (colocar valla en modo edición) de arrastre (mover la vista)
+    if (Math.hypot(found.clientX - touchTapX, found.clientY - touchTapY) > 12) touchMoved = true;
     touchStartX = found.clientX; touchStartY = found.clientY;
-    const sensFactor = (S.zoomed ? 0.0016 : 0.0032) * S.settings.sens;
-    S.aim.x = clamp(S.aim.x - dx * sensFactor * 2.2, -1, 1);
-    S.aim.y = clamp(S.aim.y - dy * sensFactor * 2.2, -1, 1);
+    // Puntería RELATIVA 360° con la misma convención que el ratón (derecha =
+    // mirar a la derecha, arriba = subir), con factor de sensibilidad táctil.
+    applyLook(dx, dy, true);
   }, { passive: false });
 
   const endTouch = (e)=>{
     if(activeTouchId===null) { isTouchAiming=false; return; }
     for(let i=0;i<e.changedTouches.length;i++){
       if(e.changedTouches[i].identifier === activeTouchId){
+        // TOC corto en modo edición de vallado = colocar en la retícula
+        if (S.fenceEditMode && !touchMoved && (performance.now() - touchTapT) < 350) {
+          handleFenceEditorClick();
+        }
         activeTouchId = null;
         isTouchAiming = false;
         break;
@@ -1691,25 +1859,35 @@ bindBtn('btnExtendTime', () => extendIntermissionTime(30, 50));
 bindBtn('feExtendTime', () => extendIntermissionTime(30, 50));
 bindBtn('btnCloseFenceEditor', () => closeFenceEditor());
 
-['feCardChainLink', 'feCardTileable', 'feCardConcrete', 'feCardMetal'].forEach(id => {
-  const el = $(id);
-  if (el) {
-    bindBtn(id, () => {
-      const type = el.getAttribute('data-type');
-      if (type) setFenceEditorModel(type);
-    });
-  }
+// Tarjetas del catálogo de vallas: se identifican por data-type (las tarjetas de
+// index.html NO tienen id; el antiguo vínculo por id era la causa del "no hace nada").
+document.querySelectorAll('#feModels .fe-card').forEach(card => {
+  const type = card.getAttribute('data-type');
+  if (!type) return;
+  card.style.pointerEvents = 'auto';
+  card.addEventListener('click', () => setFenceEditorModel(type));
+  card.addEventListener('touchstart', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    setFenceEditorModel(type);
+  }, { passive: false });
 });
 
-['feRotH', 'feRotD1', 'feRotV', 'feRotD2'].forEach(id => {
-  const el = $(id);
-  if (el) {
-    bindBtn(id, () => {
-      const r = parseFloat(el.getAttribute('data-rot'));
-      if (!isNaN(r)) setFenceRotation(r);
-    });
-  }
+// Botones de rotación: por data-rot (misma causa que las tarjetas).
+document.querySelectorAll('#feRotBtns .fe-btn-rot').forEach(btn => {
+  const r = parseFloat(btn.getAttribute('data-rot'));
+  if (isNaN(r)) return;
+  btn.style.pointerEvents = 'auto';
+  btn.addEventListener('click', () => setFenceRotation(r));
+  btn.addEventListener('touchstart', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    setFenceRotation(r);
+  }, { passive: false });
 });
+
+// Botón COLOCAR del editor (visible también en móvil, con botón grande)
+bindBtn('fePlaceBtn', () => handleFenceEditorClick());
 
 bindBtn('feToolBuild', () => setFenceTool('build'));
 bindBtn('feToolDemolish', () => setFenceTool('demolish'));
@@ -1731,6 +1909,9 @@ $('setMusic').oninput = e => { S.settings.music = +e.target.value; $('musicVal')
 $('setSfx').oninput = e => { S.settings.sfx = +e.target.value; $('sfxVal').textContent = S.settings.sfx; audio.setVol('sfx', S.settings.sfx / 100); saveSettings(); };
 $('setQuality').onchange = e => { S.settings.quality = e.target.value; applyQuality(); saveSettings(); };
 $('setVoice').onchange = e => { S.settings.voice = e.target.value; audio.voiceOn = S.settings.voice === 'on'; saveSettings(); };
+// Inversión de la puntería (desactivada por defecto: ratón/dedo en dirección natural)
+if ($('setInvertX')) $('setInvertX').onchange = e => { S.settings.invertX = e.target.checked; const v = $('invertXVal'); if (v) v.textContent = S.settings.invertX ? 'SÍ' : 'NO'; saveSettings(); toast('INVERSIÓN HORIZONTAL: ' + (S.settings.invertX ? 'SÍ' : 'NO')); };
+if ($('setInvertY')) $('setInvertY').onchange = e => { S.settings.invertY = e.target.checked; const v = $('invertYVal'); if (v) v.textContent = S.settings.invertY ? 'SÍ' : 'NO'; saveSettings(); toast('INVERSIÓN VERTICAL: ' + (S.settings.invertY ? 'SÍ' : 'NO')); };
 document.addEventListener('visibilitychange', () => { if (document.hidden && S.playing && !S.paused) pauseGame(); });
 
 // ---------------- clima ----------------
@@ -1766,26 +1947,77 @@ function updateStorm(dt) {
   S.lightning = Math.max(0, S.lightning - dt * 5);
 }
 
-// ---------------- cámara / puntería desde la torre elevada ----------------
-// La valla INTERIOR está en z = -1; el ojo del tirador en SNIPER_EYE. Con esa separación
-// la base de la valla cae ~23° por debajo del horizonte, así que el encuadre neutro se
-// inclina hacia abajo (si no, el suelo quedaría fuera de cuadro y solo se vería cielo y
-// parapeto). Las capas exterior (-14) y media (-7) quedan centradas en el mismo encuadre.
+// ---------------- cámara / puntería 360° desde la torre elevada ----------------
+// Yaw ILIMITADO (360° completos) y pitch con recorrido amplio (de mirar casi al
+// horizonte/al cielo a mirar de lleno al pie de la torre). La puntería es
+// RELATIVA al movimiento del ratón/dedo, con la convención estándar:
+//   ratón a la derecha → la vista gira a la derecha
+//   ratón hacia arriba → la vista sube
+// Sin invertir ninguna dirección por defecto (AJUSTES permite invertir X e Y).
 const FENCE_Z = -1;
 const CAM_BASE_PITCH = -Math.atan2(SNIPER_EYE.y, SNIPER_EYE.z - FENCE_Z) * 0.72; // ≈ -16.5°
-const CAM_PITCH_MIN = -1.30, CAM_PITCH_MAX = 0.30;
+const CAM_PITCH_MIN = -1.45, CAM_PITCH_MAX = 1.15;
 let camYaw = 0, camPitch = CAM_BASE_PITCH, camFov = 62;
+
+// ---- cursor / pointer lock (PC) ----
+// En combate el puntero queda OCULTO (estilo pointer lock). Mantener ALT lo
+// muestra para alcanzar botones de pantalla; al soltarlo (o al volver a hacer
+// clic) se vuelve a ocultar/enganchar.
+let pointerLocked = false;
+let altHeld = false;
+function modalsOpen() {
+  return ['menu', 'pauseMenu', 'shopMenu', 'settingsMenu', 'helpMenu', 'over'].some(id => {
+    const el = $(id);
+    return el && !el.classList.contains('hidden');
+  });
+}
+function lockAllowed() {
+  return !isTouchDevice && S.playing && !S.paused && S.screen === 'game'
+    && !modalsOpen() && !S.fenceEditMode && !altHeld;
+}
+function requestLock() {
+  if (!lockAllowed() || pointerLocked) return;
+  try {
+    const p = cvs.requestPointerLock();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch (e) { /* el navegador puede denegar el lock; el cursor visible sigue funcionando */ }
+}
+function releaseLock() {
+  if (pointerLocked && document.exitPointerLock) {
+    try { document.exitPointerLock(); } catch (e) {}
+  }
+}
+document.addEventListener('pointerlockchange', () => {
+  pointerLocked = (document.pointerLockElement === cvs);
+  updateCursorState();
+});
+document.addEventListener('pointerlockerror', () => {
+  pointerLocked = false;
+  updateCursorState();
+});
+function updateCursorState() {
+  const hide = !isTouchDevice && S.playing && !S.paused && S.screen === 'game'
+    && !modalsOpen() && !S.fenceEditMode && !altHeld;
+  document.body.classList.toggle('hide-cursor', hide);
+}
+
+// Aplica un delta de puntería (px) a la cámara 360°.
+function applyLook(dx, dy, touch) {
+  if (!S.playing || S.paused || S.screen !== 'game') return;
+  if (S.shopOpen) return;
+  const w = WEAPONS[S.curW];
+  const zl = S.zoomed ? (S.curW === 0 ? rifleZoom() : w.zoom) : 1;
+  const base = (touch ? 0.0062 : 0.0021) * S.settings.sens / zl;
+  const ix = S.settings.invertX ? -1 : 1;
+  const iy = S.settings.invertY ? -1 : 1;
+  camYaw -= dx * base * ix;
+  camPitch -= dy * base * iy;
+  camPitch = clamp(camPitch, CAM_PITCH_MIN, CAM_PITCH_MAX);
+}
+
 function updateAim(dt) {
   const w = WEAPONS[S.curW];
   const zl = S.zoomed ? (S.curW === 0 ? rifleZoom() : w.zoom) : 1;
-  // Rango de puntería: se estrecha con el zoom pero conserva recorrido vertical suficiente
-  // para barrer desde el horizonte hasta el pie de la torre.
-  const range = 0.68 / Math.sqrt(zl), rangeV = 0.45 / Math.sqrt(zl);
-  const ty = -S.aim.x * range;
-  const tp = clamp(CAM_BASE_PITCH + S.aim.y * rangeV, CAM_PITCH_MIN, CAM_PITCH_MAX);
-  const sp = Math.min(1, dt * 7 * S.settings.sens);
-  camYaw += (ty - camYaw) * sp;
-  camPitch += (tp - camPitch) * sp;
   const targetFov = 62 / zl;
   camFov += (targetFov - camFov) * Math.min(1, dt * 10);
   camera.fov = camFov;
@@ -1926,11 +2158,15 @@ function animate() {
   }
 
   if (S.fenceEditMode) {
-    groundAim(_tmp);
-    const inBounds = (_tmp.x >= FENCE_X0 && _tmp.x <= FENCE_X1 && _tmp.z >= -30 && _tmp.z <= 8);
+    // Holograma + retícula en el punto EXACTO de colocación (rayo central,
+    // sin dispersión) sobre todo el corredor construible.
+    computeFenceAimPoint(_tmp);
     const cfg = FENCE_CATALOG[S.selectedFenceModel] || FENCE_CATALOG.chain_link;
-    const canAfford = (S.score >= cfg.cost) || S.fenceTool !== 'build';
-    world.setHologram(S.selectedFenceModel, _tmp.x, _tmp.z, S.fenceRotationAngle, inBounds && canAfford);
+    const inBounds = (_tmp.x >= BUILD_X0 && _tmp.x <= BUILD_X1 && _tmp.z >= BUILD_Z0 && _tmp.z <= BUILD_Z1);
+    const free = world.isFenceSpotFree(_tmp.x, _tmp.z, S.fenceRotationAngle, cfg.width, cfg.depth);
+    const canAfford = S.score >= cfg.cost;
+    const valid = S.fenceTool === 'build' ? (inBounds && free && canAfford) : inBounds;
+    world.setHologram(S.selectedFenceModel, _tmp.x, _tmp.z, S.fenceRotationAngle, valid);
     updateFenceEditorUI();
   } else if (world.clearHologram) {
     world.clearHologram();
@@ -1966,10 +2202,13 @@ animate();
 if (typeof window !== 'undefined') {
   window.__FRTD__ = {
     S, camera, scene, world, ent, fx, WEAPONS,
-    SNIPER_EYE, PARAPET_TOP, CAM_BASE_PITCH, FENCE_Z,
-    SHORE_X, FENCE_ZS, FENCE_LABELS, BOAT_COST, BOAT_MAX, fenceFracs, fenceAvg,
+    SNIPER_EYE, PARAPET_TOP, CAM_BASE_PITCH, FENCE_Z, CAM_PITCH_MIN, CAM_PITCH_MAX,
+    SHORE_X, FENCE_ZS, FENCE_LABELS, BUILD_X0, BUILD_X1, BUILD_Z0, BUILD_Z1,
+    BOAT_COST, BOAT_MAX, fenceFracs, fenceAvg, damagePlacedFence,
     setZoom, startGame, startWave, updateAim, rayHit, tryFire, deployTurret, deployBoat, switchWeapon,
+    applyLook, updateCursorState, requestLock, releaseLock, lockAllowed,
     openFenceEditor, closeFenceEditor, toggleFenceEditor, extendIntermissionTime,
-    setFenceEditorModel, cycleFenceRotation, setFenceRotation, setFenceTool, handleFenceEditorClick,
+    setFenceEditorModel, cycleFenceRotation, setFenceRotation, setFenceTool,
+    handleFenceEditorClick, computeFenceAimPoint,
   };
 }
