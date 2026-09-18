@@ -4,6 +4,7 @@ import { AudioEngine } from './audio.js';
 import { FX } from './fx.js';
 import { World, SNIPER_EYE, PARAPET_TOP, SHORE_X, FENCE_ZS, FENCE_X0, FENCE_X1, FENCE_LABELS } from './world.js';
 import { Entities, ZTYPES, BOAT_COST, BOAT_MAX } from './entities.js';
+import { FENCE_CATALOG, ENEMY_CATALOG, models } from './models.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -40,6 +41,10 @@ const S = {
   hp: 100, lastHurt: -99,
   strikeCd: 0, strikeUnlocked: false,
   intermission: false, interT: 0,
+  fenceEditMode: false,
+  selectedFenceModel: 'chain_link',
+  fenceRotationAngle: 0,
+  fenceTool: 'build',
   dayT: 0.08, storm: 0, stormState: 'calm', stormT: rand(40, 70), lightning: 0, nextBolt: 0,
   aim: { x: 0, y: 0 }, zoomed: false, firing: false, switchT: 0,
   trauma: 0, time: 0,
@@ -72,10 +77,24 @@ function resetFences() {
 function fenceFrac(i) { const f = S.fences[i]; return f && f.alive ? f.hp / f.max : 0; }
 function fenceFracs() { return S.fences.map(f => (f.alive ? f.hp / f.max : 0)); }
 function fenceAvg() {
-  if (!S.fences.length) return 0;
-  return Math.round(S.fences.reduce((a, f) => a + (f.alive ? f.hp / f.max : 0), 0) / S.fences.length * 100);
+  let sum = 0, count = 0;
+  for (const f of S.fences) {
+    sum += f.alive ? (f.hp / f.max) : 0;
+    count++;
+  }
+  if (world && world.placedFences && world.placedFences.length > 0) {
+    for (const pf of world.placedFences) {
+      sum += pf.alive ? (pf.hp / pf.maxHp) : 0;
+      count++;
+    }
+  }
+  return count ? Math.round((sum / count) * 100) : 100;
 }
-function fencesAllFull() { return S.fences.every(f => f.alive && f.hp >= f.max); }
+function fencesAllFull() {
+  const baseFull = S.fences.every(f => f.alive && f.hp >= f.max);
+  const placedFull = !world || !world.placedFences || !world.placedFences.length || world.placedFences.every(f => f.alive && f.hp >= f.maxHp);
+  return baseFull && placedFull;
+}
 
 // ---------------- three base ----------------
 const scene = new THREE.Scene();
@@ -392,6 +411,7 @@ const RADIO_WAVE = [
 function startWave(n) {
   S.wave = n;
   S.intermission = false;
+  if (S.fenceEditMode) closeFenceEditor();
   const ib = $('interBar');
   if (ib) ib.style.display = 'none';
   for (const f of S.fences) f._warned = false;
@@ -437,8 +457,10 @@ function startWave(n) {
     }, 9000);
   }
   if (n % 5 === 0) {
+    const isTitano = (n % 10 === 0);
+    const bName = isTitano ? 'TITANOSAURUS COLOSAL' : 'CARNOTAURUS DEPREDADOR';
     setTimeout(() => { if (S.playing) audio.bossRoar(); }, 1600);
-    radio('Atención tirador: una abominación se acerca a la valla. Concentra el fuego.', 'Jefe detectado.');
+    radio('¡Atención tirador! Un dinosaurio jefe (' + bName + ') avanza hacia el perímetro defensivo. ¡Concentra el fuego en su cabeza!', 'Dinosaurio ' + bName + ' detectado.');
   } else {
     const msg = RADIO_WAVE[(Math.random() * RADIO_WAVE.length) | 0].replace('{n}', n);
     radio('Aquí Puesto de Mando: ' + msg, msg);
@@ -457,14 +479,17 @@ function endWave() {
   }
   renderObjectives();
   for (const f of S.fences) { if (f.alive) { f.hp = Math.min(f.max, f.hp + 15); if (f.hp >= f.max * 0.35) f._warned = false; } }
+  if (world.placedFences) {
+    for (const pf of world.placedFences) { if (pf.alive) pf.hp = Math.min(pf.maxHp, pf.hp + 20); }
+  }
   S.hp = Math.min(100, S.hp + 25);
   S.intermission = true;
-  S.interT = 16;
+  S.interT = 24;
   const ib = $('interBar'), it = $('interText');
   if (ib) ib.style.display = 'flex';
   if (it) it.textContent = `OLEADA ${fmt(S.wave)} SUPERADA · BONUS +${bonus} · SIGUIENTE EN ${Math.ceil(S.interT)}s`;
-  toast('ZONA LIMPIA // BONUS +' + bonus);
-  radio('Zona limpia. Reabastece y repara la valla. Pulsa B para mejoras.', 'Zona limpia. Reabastece.');
+  toast('ZONA LIMPIA // FORTIFICA EL VALLADO CON [V] O EXTIENDE TIEMPO');
+  radio('Zona limpia. Fortifica el vallado, reabastece y repara. Pulsa V para editar el muro o B para mejoras.', 'Zona limpia. Fortifica el vallado.');
   saveGame();
   updateHUD();
 }
@@ -538,36 +563,39 @@ function aimDir(out) {
   return out.normalize();
 }
 function rayHit(maxDist) {
-  // Detección de impacto de rayo precisa optimizada para la altura del nido
+  // Detección de impacto de rayo precisa optimizada para la altura del nido y dinosaurios jefes
   aimDir(_dir);
   _o.copy(camera.position);
   let best = null, bestT = maxDist || 180, bestHead = false;
   for (const z of ent.list) {
     if (z.dead) continue;
     const p = z.g.position;
-    const hy = p.y + z.headY;
+    const hy = p.y + (z.headY || (2.4 * z.cfg.scale));
+    const hz = p.z + (z.headZ || 0);
     // cabeza: esfera
-    _tmp.set(p.x - _o.x, hy - _o.y, p.z - _o.z);
+    _tmp.set(p.x - _o.x, hy - _o.y, hz - _o.z);
     let t = _tmp.dot(_dir);
     if (t > 0 && t < bestT) {
       const cx = _o.x + _dir.x * t - p.x;
       const cy = _o.y + _dir.y * t - hy;
-      const cz = _o.z + _dir.z * t - p.z;
-      const hr = z.headR * (S.zoomed ? 1.25 : 1.4);
+      const cz = _o.z + _dir.z * t - hz;
+      const hr = (z.headR || (0.52 * z.cfg.scale)) * (S.zoomed ? 1.25 : 1.4);
       if (cx * cx + cy * cy + cz * cz < hr * hr) {
         best = z; bestT = t; bestHead = true;
         continue;
       }
     }
-    // cuerpo: cilindro
-    _tmp.set(p.x - _o.x, (p.y + 1.2 * z.cfg.scale) - _o.y, p.z - _o.z);
+    // cuerpo: cilindro o cápsula adaptada a humanoides y dinosaurios
+    const bodyBaseY = p.y + 0.15;
+    const bodyTopY = p.y + (z.bodyH || (2.2 * z.cfg.scale));
+    const bodyMidY = (bodyBaseY + bodyTopY) / 2;
+    _tmp.set(p.x - _o.x, bodyMidY - _o.y, p.z - _o.z);
     t = _tmp.dot(_dir);
     if (t > 0 && t < bestT) {
       const px = _o.x + _dir.x * t, py = _o.y + _dir.y * t, pz = _o.z + _dir.z * t;
-      const y0 = p.y + 0.15, y1 = p.y + 2.2 * z.cfg.scale;
-      if (py > y0 && py < y1) {
+      if (py > bodyBaseY && py < bodyTopY) {
         const dx = px - p.x, dz = pz - p.z;
-        const br = z.bodyR * 1.5;
+        const br = (z.bodyR || (0.65 * z.cfg.scale)) * 1.5;
         if (dx * dx + dz * dz < br * br) {
           best = z; bestT = t; bestHead = false;
         }
@@ -597,7 +625,7 @@ function fireBullet(target, head, dmg, spec) {
   mesh.position.copy(_m);
   scene.add(mesh);
   const end = target
-    ? target.g.position.clone().setY(target.g.position.y + (head ? target.headY : 1.3 * target.cfg.scale))
+    ? target.g.position.clone().add(new THREE.Vector3(0, head ? (target.headY || 2.4 * target.cfg.scale) : 1.3 * target.cfg.scale, head ? (target.headZ || 0) : 0))
     : groundAim(new THREE.Vector3());
   projectiles.push({ kind: 'bullet', mesh, from: _m.clone(), to: end, t: 0, dur: _m.distanceTo(end) / 140, target, head, dmg, spec });
 }
@@ -851,7 +879,7 @@ function repairFence() {
   if (fencesAllFull()) { toast('LAS VALLAS ESTÁN ÍNTEGRAS'); return; }
   if (S.score < cost) { audio.denied(); toast('PUNTOS INSUFICIENTES (120)'); return; }
   S.score -= cost;
-  const hadFallen = S.fences.some(f => !f.alive);
+  const hadFallen = S.fences.some(f => !f.alive) || (world.placedFences && world.placedFences.some(f => !f.alive));
   for (const f of S.fences) {
     if (!f.alive) {
       f.alive = true;
@@ -860,6 +888,16 @@ function repairFence() {
       f.hp = Math.min(f.max, f.hp + 35);
     }
     if (f.hp >= f.max * 0.35) f._warned = false;
+  }
+  if (world.placedFences) {
+    for (const pf of world.placedFences) {
+      if (!pf.alive) {
+        pf.alive = true;
+        pf.hp = Math.round(pf.maxHp * 0.4);
+      } else {
+        pf.hp = Math.min(pf.maxHp, pf.hp + 40);
+      }
+    }
   }
   if (hadFallen) {
     toast('VALLAS RECONSTRUIDAS // MEDIA ' + fenceAvg() + '%');
@@ -871,7 +909,145 @@ function repairFence() {
   for (const f of S.fences) {
     for (let k = 0; k < 3; k++) fx.healSparkle(new THREE.Vector3(rand(FENCE_X0, FENCE_X1), rand(1, 4), f.z));
   }
+  if (world.placedFences) {
+    for (const pf of world.placedFences) {
+      fx.healSparkle(new THREE.Vector3(pf.x, rand(1, 3), pf.z));
+    }
+  }
   updateHUD();
+}
+
+// ---------------- modo editor de vallado ----------------
+function openFenceEditor() {
+  if (!S.playing || S.paused) return;
+  S.fenceEditMode = true;
+  setZoom(false); // Quitar mira telescópica en el editor
+  const fe = $('fenceEditorHUD');
+  if (fe) fe.classList.remove('hidden');
+  updateFenceEditorUI();
+  toast('MODO EDICIÓN DE VALLADO // INGENIERÍA DEFENSIVA');
+  audio.click();
+}
+
+function closeFenceEditor() {
+  S.fenceEditMode = false;
+  const fe = $('fenceEditorHUD');
+  if (fe) fe.classList.add('hidden');
+  if (world.clearHologram) world.clearHologram();
+  audio.click();
+}
+
+function toggleFenceEditor() {
+  if (S.fenceEditMode) closeFenceEditor();
+  else openFenceEditor();
+}
+
+function extendIntermissionTime(seconds = 30, cost = 50) {
+  if (!S.playing || S.paused) return;
+  if (S.score < cost) {
+    toast(`PUNTOS INSUFICIENTES (${cost} PTS NECESARIOS)`);
+    audio.denied();
+    return;
+  }
+  S.score -= cost;
+  S.interT = Math.max(S.interT, 0) + seconds;
+  audio.buy();
+  toast(`⏱ TIEMPO EXTENDIDO // +${seconds}s (-${cost} PTS)`);
+  updateHUD();
+  updateFenceEditorUI();
+}
+
+function setFenceEditorModel(typeId) {
+  if (!FENCE_CATALOG[typeId]) return;
+  S.selectedFenceModel = typeId;
+  document.querySelectorAll('#feModels .fe-card').forEach(c => {
+    c.classList.toggle('active', c.getAttribute('data-type') === typeId);
+  });
+  audio.click();
+}
+
+const ROTATION_ANGLES = [0, Math.PI / 4, Math.PI / 2, 3 * Math.PI / 4];
+function cycleFenceRotation() {
+  let idx = ROTATION_ANGLES.findIndex(r => Math.abs(r - S.fenceRotationAngle) < 0.05);
+  if (idx < 0) idx = 0;
+  idx = (idx + 1) % ROTATION_ANGLES.length;
+  setFenceRotation(ROTATION_ANGLES[idx]);
+}
+
+function setFenceRotation(angle) {
+  S.fenceRotationAngle = angle;
+  document.querySelectorAll('.fe-btn-rot').forEach(b => {
+    const r = parseFloat(b.getAttribute('data-rot'));
+    b.classList.toggle('active', Math.abs(r - angle) < 0.05);
+  });
+  audio.click();
+}
+
+function setFenceTool(tool) {
+  S.fenceTool = tool;
+  const bBuild = $('feToolBuild'), bDemo = $('feToolDemolish'), bRep = $('feToolRepair');
+  if (bBuild) bBuild.classList.toggle('active', tool === 'build');
+  if (bDemo) bDemo.classList.toggle('active', tool === 'demolish');
+  if (bRep) bRep.classList.toggle('active', tool === 'repair');
+  audio.click();
+}
+
+function updateFenceEditorUI() {
+  const sc = $('feScore'), tm = $('feTimer');
+  if (sc) sc.textContent = S.score;
+  if (tm) tm.textContent = Math.max(0, Math.ceil(S.interT)) + 's';
+}
+
+function handleFenceEditorClick() {
+  const p = new THREE.Vector3();
+  groundAim(p);
+  if (!p || p.lengthSq() === 0) return;
+
+  // Comprobar límites defensivos: desde la costa (SHORE_X = -26) hasta el muro derecho (FENCE_X1 = 32)
+  if (p.x < FENCE_X0 || p.x > FENCE_X1 || p.z < -30 || p.z > 8) {
+    audio.denied();
+    toast('FUERA DE LOS LÍMITES PERMITIDOS (-26m A +32m)');
+    return;
+  }
+
+  if (S.fenceTool === 'build') {
+    const cfg = FENCE_CATALOG[S.selectedFenceModel] || FENCE_CATALOG.chain_link;
+    if (S.score < cfg.cost) {
+      audio.denied();
+      toast(`PUNTOS INSUFICIENTES (SE REQUIEREN ${cfg.cost} PTS)`);
+      return;
+    }
+    S.score -= cfg.cost;
+    const added = world.addPlacedFence(S.selectedFenceModel, p.x, p.z, S.fenceRotationAngle, cfg.hp, cfg.hp);
+    if (added) {
+      audio.buy();
+      fx.sparkHit(p.clone().setY(1.0));
+      toast(`VALLA COLOCADA // ${cfg.name.toUpperCase()} (-${cfg.cost} PTS)`);
+    }
+  } else if (S.fenceTool === 'demolish') {
+    // Buscar la valla personalizada más cercana
+    let best = null, bestD = 3.5;
+    for (const f of world.placedFences) {
+      const d = Math.hypot(f.x - p.x, f.z - p.z);
+      if (d < bestD) { bestD = d; best = f; }
+    }
+    if (best) {
+      const cfg = FENCE_CATALOG[best.type] || { cost: 80 };
+      const refund = Math.floor(cfg.cost * 0.5);
+      S.score += refund;
+      world.removePlacedFence(best);
+      audio.repair();
+      fx.dirtBurst(p);
+      toast(`VALLA DEMOLIDA // +${refund} PTS RECUPERADOS`);
+    } else {
+      toast('NO HAY NINGUNA VALLA EN ESTA POSICIÓN');
+      audio.denied();
+    }
+  } else if (S.fenceTool === 'repair') {
+    repairFence();
+  }
+  updateHUD();
+  updateFenceEditorUI();
 }
 function callStrike() {
   if (!S.playing || S.paused || !S.strikeUnlocked || S.strikeCd > 0) return;
@@ -1152,6 +1328,7 @@ function gameOver() {
   if (!S.playing) return;
   S.playing = false; S.screen = 'over';
   setZoom(false);
+  if (S.fenceEditMode) closeFenceEditor();
   clearSave();
   try { speechSynthesis.cancel(); } catch (e) {}
   audio.siren(2);
@@ -1172,6 +1349,7 @@ function gameOver() {
 function toMenu() {
   S.screen = 'menu'; S.playing = false; S.paused = false; S.shopOpen = false;
   setZoom(false);
+  if (S.fenceEditMode) closeFenceEditor();
   audio.resume();
   for (const id of ['pauseMenu', 'over', 'settingsMenu', 'shopMenu', 'helpMenu']) {
     const el = $(id); if (el) el.classList.add('hidden');
@@ -1279,6 +1457,10 @@ addEventListener('mousemove', e => {
   S.aim.y = -((e.clientY / innerHeight) * 2 - 1);
 });
 cvs.addEventListener('mousedown', e => {
+  if (S.fenceEditMode) {
+    if (e.button === 0) { handleFenceEditorClick(); return; }
+    if (e.button === 2) { cycleFenceRotation(); return; }
+  }
   if (e.button === 0) { S.firing = true; tryFire(); }
   if (e.button === 2) setZoom(true);
 });
@@ -1289,6 +1471,10 @@ addEventListener('mouseup', e => {
 cvs.addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('wheel', e => {
   if (!S.playing || S.paused) return;
+  if (S.fenceEditMode) {
+    cycleFenceRotation();
+    return;
+  }
   const d = e.deltaY > 0 ? 1 : -1;
   let i = S.curW;
   for (let k = 0; k < 4; k++) {
@@ -1311,6 +1497,7 @@ addEventListener('keydown', e => {
     return;
   }
   if (k === 'Escape' || k === 'KeyP') {
+    if (S.fenceEditMode) { closeFenceEditor(); return; }
     if (!$('settingsMenu').classList.contains('hidden')) closeSettings();
     else if (!$('helpMenu').classList.contains('hidden')) $('helpMenu').classList.add('hidden');
     else if (k === 'Escape' && S.zoomed) setZoom(false);   // ESC sale de la mira antes que pausar
@@ -1326,6 +1513,19 @@ addEventListener('keydown', e => {
     return;
   }
   if (!S.playing || S.paused) return;
+  if (k === 'KeyV') {
+    toggleFenceEditor();
+    return;
+  }
+  if (S.fenceEditMode) {
+    if (k === 'KeyR') { cycleFenceRotation(); return; }
+    if (k === 'Digit1') { setFenceEditorModel('chain_link'); return; }
+    if (k === 'Digit2') { setFenceEditorModel('tileable'); return; }
+    if (k === 'Digit3') { setFenceEditorModel('concrete'); return; }
+    if (k === 'Digit4') { setFenceEditorModel('metal'); return; }
+    if (k === 'KeyE') { setFenceTool('build'); return; }
+    if (k === 'KeyX') { setFenceTool('demolish'); return; }
+  }
   if (k === 'Digit1') switchWeapon(0);
   else if (k === 'Digit2') switchWeapon(1);
   else if (k === 'Digit3') switchWeapon(2);
@@ -1431,6 +1631,7 @@ bindTouchBtn('btnTouchBoat', ()=> deployBoat());
 bindTouchBtn('btnTouchRepair', ()=> repairFence());
 bindTouchBtn('btnTouchStrike', ()=> callStrike());
 bindTouchBtn('btnTouchAmmo', ()=> cycleSpec());
+bindTouchBtn('btnTouchFence', ()=> toggleFenceEditor());
 
 // Pantalla completa (Android / Móvil)
 const btnFs = $('btnFullscreen');
@@ -1484,6 +1685,36 @@ bindBtn('btnTurret', () => deployTurret());
 bindBtn('btnRepair', () => repairFence());
 bindBtn('btnStrike', () => callStrike());
 bindBtn('btnNextWave', () => { try{ audio.click(); }catch(e){} if (S.intermission) startWave(S.wave + 1); });
+bindBtn('btnFenceAction', () => toggleFenceEditor());
+bindBtn('btnEditFence', () => openFenceEditor());
+bindBtn('btnExtendTime', () => extendIntermissionTime(30, 50));
+bindBtn('feExtendTime', () => extendIntermissionTime(30, 50));
+bindBtn('btnCloseFenceEditor', () => closeFenceEditor());
+
+['feCardChainLink', 'feCardTileable', 'feCardConcrete', 'feCardMetal'].forEach(id => {
+  const el = $(id);
+  if (el) {
+    bindBtn(id, () => {
+      const type = el.getAttribute('data-type');
+      if (type) setFenceEditorModel(type);
+    });
+  }
+});
+
+['feRotH', 'feRotD1', 'feRotV', 'feRotD2'].forEach(id => {
+  const el = $(id);
+  if (el) {
+    bindBtn(id, () => {
+      const r = parseFloat(el.getAttribute('data-rot'));
+      if (!isNaN(r)) setFenceRotation(r);
+    });
+  }
+});
+
+bindBtn('feToolBuild', () => setFenceTool('build'));
+bindBtn('feToolDemolish', () => setFenceTool('demolish'));
+bindBtn('feToolRepair', () => setFenceTool('repair'));
+
 bindBtn('btnPause', () => { S.paused ? resumeGame() : pauseGame(); });
 bindBtn('btnMute', () => {
   try{ audio.init(); }catch(e){}
@@ -1592,7 +1823,10 @@ function animate() {
           // Corredor terrestre entre la orilla y el flanco este; los objetivos
           // llegan desde el horizonte (z ≈ -45) por la playa hasta las vallas.
           // Los roles de mar reposicionan su aparición en el agua dentro de spawn().
-          const z = ent.spawn(t, rand(FENCE_X0, FENCE_X1), rand(-45, -17));
+          const isBoss = (t === 'boss');
+          const isTitano = isBoss && (S.wave % 10 === 0);
+          const opt = isBoss ? { bossVariant: isTitano ? 'titanosaurus' : 'carnotaurus' } : undefined;
+          const z = ent.spawn(t, rand(FENCE_X0, FENCE_X1), rand(-45, -17), opt);
           if (t === 'boss') {
             const bb = $('bossbar');
             if (bb) bb.style.display = 'block';
@@ -1648,7 +1882,8 @@ function animate() {
     // Actualización de entidades (zombis, torretas, civiles, soldados, lanchas, piedras)
     ent.update(dt, S.time, {
       fences: S.fences,
-      fenceAlive: S.fences.some(f => f.alive),
+      placedFences: world.placedFences,
+      fenceAlive: S.fences.some(f => f.alive) || (world.placedFences && world.placedFences.some(f => f.alive)),
       playerPos: camera.position,
       extract: { x: 26, z: 2 },
     });
@@ -1690,6 +1925,17 @@ function animate() {
     world.updateViewmodel(dt, S.time, S.firing);
   }
 
+  if (S.fenceEditMode) {
+    groundAim(_tmp);
+    const inBounds = (_tmp.x >= FENCE_X0 && _tmp.x <= FENCE_X1 && _tmp.z >= -30 && _tmp.z <= 8);
+    const cfg = FENCE_CATALOG[S.selectedFenceModel] || FENCE_CATALOG.chain_link;
+    const canAfford = (S.score >= cfg.cost) || S.fenceTool !== 'build';
+    world.setHologram(S.selectedFenceModel, _tmp.x, _tmp.z, S.fenceRotationAngle, inBounds && canAfford);
+    updateFenceEditorUI();
+  } else if (world.clearHologram) {
+    world.clearHologram();
+  }
+
   renderer.render(scene, camera);
   fpsN++; fpsT += rawDt;
   if (fpsT >= 0.5) {
@@ -1723,5 +1969,7 @@ if (typeof window !== 'undefined') {
     SNIPER_EYE, PARAPET_TOP, CAM_BASE_PITCH, FENCE_Z,
     SHORE_X, FENCE_ZS, FENCE_LABELS, BOAT_COST, BOAT_MAX, fenceFracs, fenceAvg,
     setZoom, startGame, startWave, updateAim, rayHit, tryFire, deployTurret, deployBoat, switchWeapon,
+    openFenceEditor, closeFenceEditor, toggleFenceEditor, extendIntermissionTime,
+    setFenceEditorModel, cycleFenceRotation, setFenceRotation, setFenceTool, handleFenceEditorClick,
   };
 }

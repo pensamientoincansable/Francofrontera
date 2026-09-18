@@ -1,6 +1,7 @@
 // FRONTERA // Dead Tide — Mundo 3D: entorno, clima, valla, helicóptero y armas en vista
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { models, FENCE_CATALOG } from './models.js';
 
 const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
 function lerpColor(a, b, f, out) {
@@ -47,8 +48,8 @@ export const PARAPET_Z = 31.05;
 // enemiga y para la lancha de defensa que patrulla nuestra playa.
 export const SHORE_X = -26;
 export const FENCE_ZS = Object.freeze([-14, -7, -1]); // exterior → interior
-export const FENCE_X0 = -10;
-export const FENCE_X1 = 31;
+export const FENCE_X0 = -26;
+export const FENCE_X1 = 32;
 export const FENCE_LABELS = Object.freeze(['EXTERIOR', 'MEDIA', 'INTERIOR']);
 // Tiempos del asalto anfibio: 3 s para poner la lancha + 2 s para salir de la orilla.
 export const BOAT_DEPLOY_TIME = 3.0;
@@ -60,10 +61,15 @@ export class World {
     this.tmpC = new THREE.Color();
     this.lampLights = []; this.lampMats = [];
     this.fencePosts = []; this.fenceRails = [];
+    this.placedFences = [];
+    this.hologramGroup = new THREE.Group();
+    this.hologramGroup.name = 'fenceHologram';
+    this.scene.add(this.hologramGroup);
     this.time = 0;
     this.buildLights();
     this.buildSky();
     this.buildTerrain();
+    this.buildRightWall();
     this.buildFence();
     this.buildProps();
     this.buildHeli();
@@ -173,17 +179,74 @@ export class World {
     }
   }
 
-  // ---------- vallas destructibles (3 capas en profundidad) ----------
+  // ---------- muro perimetral fortificado en el flanco derecho ----------
+  buildRightWall() {
+    const wallGroup = new THREE.Group();
+    wallGroup.name = 'rightPerimeterWall';
+    const concreteMat = new THREE.MeshStandardMaterial({ color: 0x475156, roughness: 0.92, metalness: 0.1 });
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0x242d32, roughness: 0.5, metalness: 0.8 });
+    const hazardMat = new THREE.MeshBasicMaterial({ color: 0xffb84c });
+
+    const wallX = 32.5;
+    const zMin = -65, zMax = 25;
+    const totalLen = zMax - zMin;
+    const wallH = 4.8;
+    const wallThick = 0.85;
+
+    // Bloque continuo de hormigón armado
+    const mainWall = new THREE.Mesh(new THREE.BoxGeometry(wallThick, wallH, totalLen), concreteMat);
+    mainWall.position.set(wallX, wallH / 2, (zMin + zMax) / 2);
+    mainWall.castShadow = true;
+    mainWall.receiveShadow = true;
+    wallGroup.add(mainWall);
+
+    // Coronación superior con remate metálico
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(wallThick + 0.35, 0.28, totalLen), steelMat);
+    cap.position.set(wallX, wallH + 0.14, (zMin + zMax) / 2);
+    wallGroup.add(cap);
+
+    // Pilares y contrafuertes cada 6 metros a lo largo del muro
+    for (let z = zMin; z <= zMax; z += 6) {
+      const pilar = new THREE.Mesh(new THREE.BoxGeometry(wallThick + 0.65, wallH + 0.9, 0.95), concreteMat);
+      pilar.position.set(wallX, (wallH + 0.9) / 2, z);
+      pilar.castShadow = true;
+      pilar.receiveShadow = true;
+      wallGroup.add(pilar);
+
+      // Franja reflectante de seguridad
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(wallThick + 0.68, 0.32, 0.72), hazardMat);
+      stripe.position.set(wallX, 2.2, z);
+      wallGroup.add(stripe);
+
+      // Lámparas de vigilancia en el sector de vallas
+      if (z >= -22 && z <= 12) {
+        const lampMat = new THREE.MeshBasicMaterial({ color: 0xff7043 });
+        const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), lampMat);
+        lamp.position.set(wallX - 0.48, wallH + 0.65, z);
+        wallGroup.add(lamp);
+        this.lampMats.push(lampMat);
+      }
+    }
+
+    this.scene.add(wallGroup);
+  }
+
+  // ---------- vallas destructibles y modelos 3D (desde la costa izquierda al muro derecho) ----------
   buildFence() {
     this.fence = new THREE.Group();
-    this.fenceLayers = []; // [{ z, label, posts: [], rails: [] }]
+    this.fenceLayers = []; // [{ z, label, posts: [], rails: [], gltfMeshes: [] }]
     this.fencePosts = []; this.fenceRails = [];
+    this.fence3DGroup = new THREE.Group();
+    this.fence3DGroup.name = 'fence3DModels';
+    this.scene.add(this.fence3DGroup);
+
     const metal = new THREE.MeshStandardMaterial({ color: 0x687b79, metalness: 0.7, roughness: 0.45 });
     const wireMat = new THREE.MeshBasicMaterial({ color: 0xb3c3b8 });
     const fenceW = FENCE_X1 - FENCE_X0;
     const fenceCX = (FENCE_X0 + FENCE_X1) / 2;
+
     FENCE_ZS.forEach((fz, li) => {
-      const layer = { z: fz, label: FENCE_LABELS[li], posts: [], rails: [] };
+      const layer = { z: fz, label: FENCE_LABELS[li], posts: [], rails: [], gltfMeshes: [] };
       for (let x = FENCE_X0; x <= FENCE_X1 + 0.01; x += 3) {
         const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 5.8, 0.16), metal);
         post.position.set(x, 2.9, fz);
@@ -191,9 +254,9 @@ export class World {
         this.fence.add(post);
         const rec = {
           mesh: post, x, baseY: 2.9, layer: li,
-          fallAt: 0.15 + Math.random() * 0.8,   // fracción de HP bajo la que cae
+          fallAt: 0.15 + Math.random() * 0.8,
           dir: Math.random() < 0.5 ? -1 : 1,
-          tilt: 0 // 0 vertical .. 1 caído
+          tilt: 0
         };
         layer.posts.push(rec);
         this.fencePosts.push(rec);
@@ -213,9 +276,13 @@ export class World {
       this.fenceLayers.push(layer);
     });
     this.scene.add(this.fence);
-    // Farolas de perímetro: 3 por capa para no saturar de luces (mismo total que antes)
+
+    // Cargar y sustituir con modelos 3D de /resources/construcción
+    this.populate3DFences();
+
+    // Farolas de perímetro distribuidas de costa (x=-26) a muro (x=32)
     for (const fz of FENCE_ZS) {
-      for (const x of [-6, 8, 22]) {
+      for (const x of [-20, -7, 6, 19]) {
         const mat = new THREE.MeshBasicMaterial({ color: 0xffe290 });
         const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), mat);
         lamp.position.set(x, 6, fz);
@@ -225,9 +292,9 @@ export class World {
         this.scene.add(l); this.lampLights.push(l);
       }
     }
-    // Focos potentes de vigilancia: 2 por capa hacia su área de aproximación
+    // Focos potentes de vigilancia hacia el área de aproximación
     FENCE_ZS.forEach((fz) => {
-      for (const fx of [-4, 16]) {
+      for (const fx of [-14, 2, 18]) {
         const spot = new THREE.SpotLight(0xfff3d0, 4.5, 44, 0.75, 0.45, 1.2);
         spot.position.set(fx, 6.2, fz);
         const spotTgt = new THREE.Object3D();
@@ -238,7 +305,7 @@ export class World {
         this.lampLights.push(spot);
       }
     });
-    // Baliza luminosa en el extremo marítimo de cada capa (marca el flanco del mar)
+    // Baliza luminosa en el extremo marítimo de la costa (x = SHORE_X - 0.8)
     for (const fz of FENCE_ZS) {
       const buoyMat = new THREE.MeshBasicMaterial({ color: 0x36c8ff });
       const buoy = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), buoyMat);
@@ -247,8 +314,110 @@ export class World {
       this.lampMats.push(buoyMat);
     }
   }
+
+  // Sustituir vallas iniciales con modelos 3D de alta definición
+  populate3DFences() {
+    return models.loadAll().then(() => {
+      if (!this.fenceLayers || !this.fenceLayers.length) return;
+      // Ocultar postes y alambres procedurales antiguos para lucir los modelos 3D
+      this.fence.visible = false;
+
+      // Capa 0 (Exterior z = -14): Malla modular perimetral y tela metálica
+      this.build3DLayer(0, FENCE_ZS[0], 'tileable', 11.5);
+      // Capa 1 (Media z = -7): Muros blindados de hormigón
+      this.build3DLayer(1, FENCE_ZS[1], 'concrete', 3.9);
+      // Capa 2 (Interior z = -1): Vallas de hierro forjado reforzadas
+      this.build3DLayer(2, FENCE_ZS[2], 'metal', 3.4);
+    }).catch(err => {
+      console.warn('Fallback a vallas procedurales:', err);
+    });
+  }
+
+  build3DLayer(layerIdx, fz, modelType, stepW) {
+    const layer = this.fenceLayers[layerIdx];
+    if (!layer) return;
+
+    for (let x = FENCE_X0 + stepW / 2; x <= FENCE_X1 - stepW / 2 + 0.1; x += stepW) {
+      const mesh = models.createFence(modelType);
+      if (!mesh) continue;
+      mesh.position.set(x, 0, fz);
+      this.fence3DGroup.add(mesh);
+      const segObj = {
+        id: `layer_${layerIdx}_${x.toFixed(1)}`,
+        layerIndex: layerIdx,
+        type: modelType,
+        x, z: fz,
+        rotation: 0,
+        width: stepW,
+        mesh,
+        baseY: 0,
+        tiltDir: Math.random() < 0.5 ? 1 : -1,
+        hp: 100, maxHp: 100,
+        alive: true
+      };
+      layer.gltfMeshes.push(segObj);
+      this.placedFences.push(segObj);
+    }
+  }
+
+  // Añade una valla personalizada colocada por el jugador en el editor
+  addPlacedFence(type, x, z, rotation, hp, maxHp) {
+    const cfg = FENCE_CATALOG[type] || FENCE_CATALOG.chain_link;
+    const mesh = models.createFence(type);
+    if (!mesh) return null;
+
+    mesh.position.set(x, 0, z);
+    mesh.rotation.y = rotation;
+    this.fence3DGroup.add(mesh);
+
+    const fenceObj = {
+      id: 'custom_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+      layerIndex: -1,
+      type,
+      name: cfg.name,
+      x, z,
+      rotation,
+      width: cfg.width,
+      mesh,
+      baseY: 0,
+      tiltDir: Math.random() < 0.5 ? 1 : -1,
+      hp: hp || cfg.hp,
+      maxHp: maxHp || cfg.hp,
+      alive: true
+    };
+
+    this.placedFences.push(fenceObj);
+    return fenceObj;
+  }
+
+  // Elimina una valla colocada
+  removePlacedFence(fenceObj) {
+    const idx = this.placedFences.indexOf(fenceObj);
+    if (idx >= 0) this.placedFences.splice(idx, 1);
+    if (fenceObj.mesh) this.fence3DGroup.remove(fenceObj.mesh);
+  }
+
+  // Muestra el holograma de previsualización para colocar vallas
+  setHologram(type, x, z, rotation, isValid) {
+    while (this.hologramGroup.children.length) {
+      this.hologramGroup.remove(this.hologramGroup.children[0]);
+    }
+    const holo = models.createHologram(type, isValid);
+    if (holo) {
+      holo.position.set(x, 0, z);
+      holo.rotation.y = rotation;
+      this.hologramGroup.add(holo);
+      this.hologramGroup.visible = true;
+    }
+  }
+
+  clearHologram() {
+    this.hologramGroup.visible = false;
+    while (this.hologramGroup.children.length) {
+      this.hologramGroup.remove(this.hologramGroup.children[0]);
+    }
+  }
   fenceVisual(frac) {
-    // Acepta un número (compatibilidad: se aplica a las 3 capas) o un array por capa.
     const fracs = Array.isArray(frac) ? frac : [frac, frac, frac];
     const layers = this.fenceLayers && this.fenceLayers.length ? this.fenceLayers : null;
     if (layers) {
@@ -264,19 +433,32 @@ export class World {
         const sag = (1 - f) * 0.5;
         layer.rails.forEach((r, i) => { r.rotation.z = (i % 2 ? 1 : -1) * sag * 0.06; });
       });
-      return;
     }
-    // Fallback legado (una sola valla)
-    const f0 = fracs[0];
-    for (const p of this.fencePosts) {
-      const target = f0 >= 0.99 ? 0 : (f0 < p.fallAt ? 1 : (f0 < p.fallAt + 0.15 ? 0.45 : 0));
-      p.tilt += (target - p.tilt) * 0.06;
-      p.mesh.rotation.z = p.tilt * p.dir * 1.35;
-      p.mesh.rotation.x = p.tilt * 0.3;
-      p.mesh.position.y = p.baseY - p.tilt * 2.2;
+
+    // Actualizar visuales de todos los modelos 3D de vallas (capas y personalizadas)
+    for (const f of this.placedFences) {
+      if (!f.mesh) continue;
+      let hpFrac = 1;
+      if (f.layerIndex >= 0 && fracs[f.layerIndex] !== undefined) {
+        hpFrac = fracs[f.layerIndex];
+      } else if (f.maxHp > 0) {
+        hpFrac = Math.max(0, f.hp / f.maxHp);
+      }
+      if (hpFrac < 0.01 || !f.alive) {
+        // Colapso completo en el suelo
+        f.mesh.rotation.x = THREE.MathUtils.lerp(f.mesh.rotation.x, (f.tiltDir || 1) * 1.35, 0.08);
+        f.mesh.position.y = THREE.MathUtils.lerp(f.mesh.position.y, -0.6, 0.08);
+      } else if (hpFrac < 0.95) {
+        // Daño parcial: ligera inclinación y hundimiento
+        const tilt = (1 - hpFrac) * 0.35 * (f.tiltDir || 1);
+        f.mesh.rotation.x = THREE.MathUtils.lerp(f.mesh.rotation.x, tilt, 0.08);
+        f.mesh.position.y = THREE.MathUtils.lerp(f.mesh.position.y, -(1 - hpFrac) * 0.25, 0.08);
+      } else {
+        // Íntegra / Reparada
+        f.mesh.rotation.x = THREE.MathUtils.lerp(f.mesh.rotation.x, 0, 0.1);
+        f.mesh.position.y = THREE.MathUtils.lerp(f.mesh.position.y, 0, 0.1);
+      }
     }
-    const sag = (1 - f0) * 0.5;
-    this.fenceRails.forEach((r, i) => { r.rotation.z = (i % 2 ? 1 : -1) * sag * 0.06; });
   }
 
   // ---------- props: sacos, barriles, nido de francotirador elevado, extracción ----------
@@ -607,49 +789,43 @@ export class World {
       return;
     }
     try {
-    loader.load('resources/gltf-Sniper/Mauser_98K.gltf', (gltf) => {
-      const model = gltf.scene;
-      // analizar geometría: normalizar escala y orientar el cañón (extremo fino) hacia -Z
-      const box = new THREE.Box3().setFromObject(model);
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-      let geo = null;
-      model.traverse(o => { if (o.isMesh && !geo) geo = o.geometry; });
-      let barrelSign = 1;
-      try {
-        const posA = geo.attributes.position;
-        let rPos = 0, nPos = 0, rNeg = 0, nNeg = 0;
-        const step = Math.max(1, Math.floor(posA.count / 1200));
-        for (let i = 0; i < posA.count; i += step) {
-          const x = posA.getX(i) - center.x, y = posA.getY(i) - center.y, z = posA.getZ(i) - center.z;
-          const r = Math.sqrt(y * y + z * z);
-          if (x >= 0) { rPos += r; nPos++; } else { rNeg += r; nNeg++; }
-        }
-        barrelSign = (rPos / Math.max(1, nPos)) < (rNeg / Math.max(1, nNeg)) ? 1 : -1;
-      } catch (e) { barrelSign = 1; }
-      const wrap = new THREE.Group();
-      // recentrar
-      model.position.sub(center);
-      wrap.add(model);
-      const longest = Math.max(size.x, size.y, size.z);
-      const s = 1.55 / longest;
-      wrap.scale.setScalar(s);
-      // el modelo mide a lo largo de X: rotar para apuntar a -Z
-      wrap.rotation.y = barrelSign > 0 ? Math.PI / 2 : -Math.PI / 2;
-      wrap.rotation.x = 0.015;
-      model.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false; } });
-      this.weapons3d[0] = wrap;
-      this.vm.add(wrap);
-      this.weapons3d[0].visible = (this.curW === 0);
-      const mz = new THREE.Object3D(); mz.position.set(0, 0.045, -1.05); wrap.add(mz);
-      this.muzzles[0] = mz;
-    }, undefined, () => {
-      // fallo de carga (404, file://, CDN bloqueado…) → rifle procedural
-      this.useFallbackRifle();
-    });
+      const origin = (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin !== 'null')
+        ? `${window.location.origin}/`
+        : '';
+      const mauserUrl = origin + 'resources/gltf-Sniper/Mauser_98K.gltf';
+      loader.load(mauserUrl, (gltf) => {
+        const model = gltf.scene;
+        // analizar geometría: recentrar y orientar el cañón directamente al horizonte (-Z)
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+
+        const wrap = new THREE.Group();
+        // recentrar el modelo en su centro de masa
+        model.position.sub(center);
+        // El cañón del modelo Mauser apunta originalmente hacia +Z en coordenadas locales;
+        // para orientarlo hacia el horizonte (eje -Z en vista de cámara), rotamos 180° (Math.PI) sobre Y:
+        model.rotation.y = Math.PI;
+        wrap.add(model);
+
+        const longest = Math.max(size.x, size.y, size.z);
+        const s = 1.55 / longest;
+        wrap.scale.setScalar(s);
+        wrap.position.set(0, 0, 0);
+        wrap.rotation.y = 0;
+        wrap.rotation.x = 0.015;
+
+        model.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false; } });
+        this.weapons3d[0] = wrap;
+        this.vm.add(wrap);
+        this.weapons3d[0].visible = (this.curW === 0);
+        const mz = new THREE.Object3D(); mz.position.set(0, 0.045, -1.05); wrap.add(mz);
+        this.muzzles[0] = mz;
+      }, undefined, () => {
+        // fallo de carga (404, file://, CDN bloqueado…) → rifle procedural
+        this.useFallbackRifle();
+      });
     } catch (e) {
-      // Throw síncrono (p. ej. URL relativa inválida fuera del navegador):
-      // usar el rifle procedural sin romper la construcción del mundo.
       console.warn('No se pudo iniciar la carga del Mauser, usando rifle procedural', e);
       this.useFallbackRifle();
     }

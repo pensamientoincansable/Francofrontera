@@ -349,14 +349,78 @@ body.is-touch #touchControls{display:block}
 /* ===== INTERMISIÓN ===== */
 #interBar{
   position:absolute;left:50%;bottom:80px;transform:translateX(-50%);
-  display:none;align-items:center;gap:12px;background:rgba(10,22,30,.92);
+  display:none;align-items:center;gap:10px;background:rgba(10,22,30,.92);
   border:1px solid var(--cyan);padding:8px 16px;font:700 13px 'JetBrains Mono';
-  color:var(--cyan);pointer-events:auto;z-index:4;
+  color:var(--cyan);pointer-events:auto;z-index:4;backdrop-filter:blur(6px);
+  flex-wrap:wrap;justify-content:center;
 }
+.ib-btn{
+  background:rgba(12,27,35,.88);border:1px solid #425d63;color:#dffcff;
+  font:700 12px 'JetBrains Mono';padding:6px 12px;cursor:pointer;
+  transition:all .15s ease;
+}
+.ib-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.ib-time{border-color:var(--amber);color:var(--amber)}
+.ib-time:hover{background:rgba(255,184,76,.15);box-shadow:0 0 10px #ffb84c44}
+.ib-fence{border-color:var(--cyan);color:var(--cyan)}
+.ib-fence:hover{background:rgba(124,248,255,.15);box-shadow:0 0 10px #7cf8ff44}
 #btnNextWave{
   background:var(--cyan);border:0;color:#071017;font:700 13px 'Barlow Condensed';
   letter-spacing:.1em;padding:7px 14px;cursor:pointer;
 }
+#btnNextWave:hover{box-shadow:0 0 15px #7cf8ff88}
+
+/* ===== HUD DE EDICIÓN DE VALLADO ===== */
+#fenceEditorHUD{
+  position:fixed;top:46px;left:50%;transform:translateX(-50%);
+  width:min(900px,96vw);max-height:calc(100vh - 140px);
+  background:rgba(6,15,22,.94);border:1px solid var(--cyan);
+  border-top:3px solid var(--cyan);box-shadow:0 8px 32px rgba(0,0,0,.75);
+  backdrop-filter:blur(10px);z-index:8;pointer-events:auto;
+  padding:12px 18px 16px;display:flex;flex-direction:column;gap:10px;
+  animation:feIn .2s ease-out;
+}
+#fenceEditorHUD.hidden{display:none !important}
+@keyframes feIn{from{opacity:0;transform:translate(-50%,-10px)}to{opacity:1;transform:translate(-50%,0)}}
+.fe-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:1px solid #1f3942;padding-bottom:8px}
+.fe-kicker{font:700 9px 'JetBrains Mono';letter-spacing:.2em;color:var(--cyan)}
+.fe-header h2{font-size:22px;letter-spacing:.08em;margin:0;color:#f0fcff}
+.fe-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.fe-stat-pill{font:700 11px 'JetBrains Mono';background:rgba(12,27,35,.85);border:1px solid #38545c;padding:4px 10px;color:#9bb8be}
+.fe-stat-pill b{color:var(--cyan)}
+.fe-btn-time{
+  background:rgba(255,184,76,.12);border:1px solid var(--amber);color:var(--amber);
+  font:700 11px 'JetBrains Mono';padding:5px 12px;cursor:pointer;transition:all .15s;
+}
+.fe-btn-time:hover{background:var(--amber);color:#071017;box-shadow:0 0 12px #ffb84c66}
+.fe-sec-title{font:700 10px 'JetBrains Mono';letter-spacing:.12em;color:#799fa7;display:block;margin-bottom:6px}
+.fe-models{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+.fe-card{
+  background:rgba(10,24,32,.75);border:1px solid #28444c;padding:8px 10px;cursor:pointer;
+  position:relative;transition:all .15s;
+}
+.fe-card:hover{border-color:var(--cyan);background:rgba(14,34,45,.85)}
+.fe-card.active{border-color:var(--cyan);background:rgba(16,42,56,.95);box-shadow:0 0 12px #7cf8ff33}
+.fe-card-hotkey{position:absolute;top:5px;right:6px;font:700 9px 'JetBrains Mono';color:#4c717b;border:1px solid #28444c;padding:1px 4px}
+.fe-card.active .fe-card-hotkey{color:var(--cyan);border-color:var(--cyan)}
+.fe-card-name{font:700 13px 'JetBrains Mono';color:#e8fbff;margin-bottom:3px}
+.fe-card-desc{font:10px 'JetBrains Mono';color:#82a1a8;line-height:1.3;margin-bottom:6px;min-height:26px}
+.fe-card-meta{display:flex;justify-content:space-between;align-items:center;font:700 11px 'JetBrains Mono'}
+.fe-card-meta span{color:#64dfdf}
+.fe-card-meta b{color:var(--amber)}
+.fe-controls-row{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:4px}
+.fe-btn-group{display:flex;gap:5px;flex-wrap:wrap}
+.fe-btn-rot,.fe-btn-tool{
+  background:rgba(12,27,35,.85);border:1px solid #38545c;color:#cfe5e8;
+  font:700 10px 'JetBrains Mono';padding:6px 10px;cursor:pointer;transition:all .15s;
+}
+.fe-btn-rot:hover,.fe-btn-tool:hover{border-color:var(--cyan);color:#fff}
+.fe-btn-rot.active,.fe-btn-tool.active{background:var(--cyan);color:#071017;border-color:var(--cyan);font-weight:800}
+.fe-btn-done{
+  background:var(--cyan);border:0;color:#071017;font:700 13px 'Barlow Condensed';
+  letter-spacing:.12em;padding:8px 18px;cursor:pointer;transition:all .15s;
+}
+.fe-btn-done:hover{box-shadow:0 0 18px #7cf8ff88}
 
 /* ===== PANTALLAS / MODALES ===== */
 .screen{
@@ -505,7 +569,86 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
   <div class="damage" id="dmg"></div><div id="lowhp"></div><div class="flash" id="flash"></div>
 
   <!-- Intermisión -->
-  <div id="interBar"><span id="interText">OLEADA SUPERADA</span><button id="btnNextWave">SIGUIENTE OLEADA →</button></div>
+  <div id="interBar">
+    <span id="interText">OLEADA SUPERADA</span>
+    <button id="btnExtendTime" class="ib-btn ib-time">⏱ +30s TIEMPO (50 PTS)</button>
+    <button id="btnEditFence" class="ib-btn ib-fence">🛡 EDITAR VALLADO [V]</button>
+    <button id="btnNextWave">SIGUIENTE OLEADA →</button>
+  </div>
+
+  <!-- HUD de Edición de Vallado (Ingeniería Defensiva) -->
+  <div id="fenceEditorHUD" class="hidden">
+    <div class="fe-header">
+      <div class="fe-title">
+        <span class="fe-kicker">INGENIERÍA DEFENSIVA // PERÍMETRO COSTA-MURO</span>
+        <h2>MODO EDICIÓN DE VALLADO</h2>
+      </div>
+      <div class="fe-status">
+        <div class="fe-stat-pill">PUNTOS: <b id="feScore">0</b></div>
+        <div class="fe-stat-pill">INTERMISIÓN: <b id="feTimer">30s</b></div>
+        <button id="feExtendTime" class="fe-btn-time">⏱ +30s TIEMPO (50 PTS)</button>
+      </div>
+    </div>
+
+    <div class="fe-body">
+      <!-- Modelos de vallas -->
+      <div class="fe-section">
+        <span class="fe-sec-title">CATÁLOGO DE VALLAS (RESOURCES/CONSTRUCCIÓN):</span>
+        <div class="fe-models" id="feModels">
+          <div class="fe-card active" data-type="chain_link">
+            <div class="fe-card-hotkey">1</div>
+            <div class="fe-card-name">MALLA METÁLICA</div>
+            <div class="fe-card-desc">Valla de seguridad con postes de acero y alambrada</div>
+            <div class="fe-card-meta"><span>HP: 150</span><b>60 PTS</b></div>
+          </div>
+          <div class="fe-card" data-type="tileable">
+            <div class="fe-card-hotkey">2</div>
+            <div class="fe-card-name">PERÍMETRO MODULAR</div>
+            <div class="fe-card-desc">Malla perimetral de gran alcance y contención</div>
+            <div class="fe-card-meta"><span>HP: 220</span><b>90 PTS</b></div>
+          </div>
+          <div class="fe-card" data-type="concrete">
+            <div class="fe-card-hotkey">3</div>
+            <div class="fe-card-name">BARRERA DE HORMIGÓN</div>
+            <div class="fe-card-desc">Bloque blindado de hormigón armado, máxima resistencia</div>
+            <div class="fe-card-meta"><span>HP: 350</span><b>120 PTS</b></div>
+          </div>
+          <div class="fe-card" data-type="metal">
+            <div class="fe-card-hotkey">4</div>
+            <div class="fe-card-name">HIERRO FORJADO</div>
+            <div class="fe-card-desc">Barrotes verticales pesados antiasalto</div>
+            <div class="fe-card-meta"><span>HP: 200</span><b>80 PTS</b></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controles de rotación y herramientas -->
+      <div class="fe-controls-row">
+        <div class="fe-rot-group">
+          <span class="fe-sec-title">ROTACIÓN [TECLA R]:</span>
+          <div class="fe-btn-group" id="feRotBtns">
+            <button class="fe-btn-rot active" data-rot="0">━ HORIZONTAL (0°)</button>
+            <button class="fe-btn-rot" data-rot="0.785398">╱ DIAGONAL (45°)</button>
+            <button class="fe-btn-rot" data-rot="1.570796">┃ VERTICAL (90°)</button>
+            <button class="fe-btn-rot" data-rot="2.356194">╲ DIAGONAL (135°)</button>
+          </div>
+        </div>
+
+        <div class="fe-tools-group">
+          <span class="fe-sec-title">MODO:</span>
+          <div class="fe-btn-group">
+            <button class="fe-btn-tool active" id="feToolBuild">➕ CONSTRUIR</button>
+            <button class="fe-btn-tool" id="feToolDemolish">✖ DEMOLER (50%)</button>
+            <button class="fe-btn-tool" id="feToolRepair">🔧 REPARAR VALLAS</button>
+          </div>
+        </div>
+
+        <div class="fe-actions-group">
+          <button class="fe-btn-done" id="btnCloseFenceEditor">SALIR [V] →</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Barra inferior minimalista -->
   <div class="bottom">
@@ -536,6 +679,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
       <button class="action" id="btnTurret"><strong>⚙ AMETRALLADORA</strong><span id="turretHint">TECLA E · <b id="turretCountVal">0</b>/4</span></button>
       <button class="action" id="btnBoat" disabled><strong>⛵ LANCHA PLAYA</strong><span id="boatHint">DESDE OLEADA 2</span></button>
       <button class="action" id="btnRepair"><strong>⛨ REPARAR VALLAS</strong><span>TECLA F · 120 PTS · 3 CAPAS</span></button>
+      <button class="action" id="btnFenceAction"><strong>🛡 EDITAR VALLAS</strong><span>TECLA V · EXTENDER TIEMPO</span></button>
       <button class="action hot" id="btnStrike" disabled><strong>✦ ATAQUE AÉREO</strong><span id="strikeText">OLEADA 3</span></button>
       <button class="action" id="btnShop"><strong>▲ MEJORAS</strong><span>TECLA B</span></button>
     </div>
@@ -546,6 +690,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
     <div id="touchAimPad"></div>
 
     <div class="touch-action-bar hud-hide-scoped">
+      <button class="tbtn-pill" id="btnTouchFence">🛡 VALLAS</button>
       <button class="tbtn-pill hot" id="btnTouchTurret">⚙ TORRETA (<span id="touchTurretCount">0</span>/4)</button>
       <button class="tbtn-pill" id="btnTouchBoat">⛵ LANCHA (<span id="touchBoatCount">0</span>/2)</button>
       <button class="tbtn-pill" id="btnTouchRepair">⛨ REPARAR</button>
@@ -631,19 +776,23 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
 <div class="screen hidden" id="helpMenu">
   <div class="card"><div class="kicker">MANUAL DE COMBATE ADAPTATIVO</div><h2>CONTROLES PC & ANDROID</h2>
     <div class="keys">
-      <b>RATÓN / ARRASTRE</b><span>Apuntar suavemente desde la torre elevada</span>
-      <b>CLICK IZQ / BOTÓN FUEGO</b><span>Disparar arma seleccionada</span>
+      <b>RATÓN / ARRASTRE</b><span>Apuntar suavemente desde la torre elevada (cañón del Mauser alineado al horizonte)</span>
+      <b>CLICK IZQ / BOTÓN FUEGO</b><span>Disparar arma seleccionada (o colocar valla en modo edición)</span>
       <b>CLICK DER / ESPACIO / BOTÓN MIRA</b><span>Activar mira telescópica con zoom y desenfoque periférico</span>
+      <b>V / BOTÓN VALLAS</b><span>Modo Edición de Vallado: colocar vallas personalizadas, rotar y demoler</span>
+      <b>R / CLICK DER (EN EDITOR)</b><span>Rotar valla (horizontal 0°, diagonal 45°, vertical 90°, diagonal 135°)</span>
+      <b>EXTENDER TIEMPO</b><span>+30 segundos de preparación antes de cada ronda a cambio de 50 puntos</span>
       <b>E / C / BOTÓN TORRETA</b><span>Colocar ametralladora autónoma (hasta 4 en el perímetro)</span>
-      <b>L / BOTÓN LANCHA</b><span>Fabricar lancha de defensa en nuestra playa (200 pts, oleada 2+, máx. 2): se queda en nuestro lado de la frontera y ametralla a los objetivos de mar que se acerquen</span>
-      <b>1 / 2 / 3 / 4 / RANURAS</b><span>Cambiar de arma (Rifle, Pistola, Lanzagranadas, Misiles)</span>
+      <b>L / BOTÓN LANCHA</b><span>Fabricar lancha de defensa en nuestra playa (200 pts, oleada 2+, máx. 2)</span>
+      <b>1 / 2 / 3 / 4 / RANURAS</b><span>Cambiar de arma (o seleccionar modelo de valla en modo edición)</span>
       <b>Q / BOTÓN MUNICIÓN</b><span>Alternar munición especial (Normal / Incendiaria / Eléctrica)</span>
-      <b>R / BOTÓN RECARGA</b><span>Recargar arma</span>
-      <b>F / BOTÓN REPARAR</b><span>Reparar las 3 vallas defensivas (120 pts)</span>
+      <b>R / BOTÓN RECARGA</b><span>Recargar arma (en combate)</span>
+      <b>F / BOTÓN REPARAR</b><span>Reparar las vallas defensivas (120 pts)</span>
       <b>T / BOTÓN APOYO</b><span>Solicitar ataque aéreo de helicóptero (Oleada 3+)</span>
       <b>B</b><span>Tienda de mejoras tácticas</span>
       <b>P / ESC</b><span>Pausar partida</span>
       <b>M</b><span>Silenciar audio</span>
+      <b>DINOSAURIOS JEFES</b><span>Carnotaurus y Titanosaurus sustituyen a los jefes de oleada con puntos críticos en la cabeza</span>
     </div>
     <div class="btnrow"><button class="start" id="btnCloseHelp">VOLVER →</button></div>
   </div>
