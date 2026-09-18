@@ -1,22 +1,23 @@
 // FRONTERA // Dead Tide — Entidades: zombis, jefes, civiles, soldados, torretas, lanchas y piedras
 import * as THREE from 'three';
+import { models, ENEMY_CATALOG } from './models.js';
 
 // Geografía — DEBE coincidir con js/world.js (duplicado para evitar dependencia circular)
-const SHORE_X = -26;              // mar a la izquierda, delimitado a la costa: x < SHORE_X (≈25% del campo de visión a 16:9, ver world.js)
+const SHORE_X = -26;              // mar a la izquierda, delimitado a la costa: x < SHORE_X
 const FENCE_ZS = [-14, -7, -1];   // 3 capas: exterior → interior
-const FENCE_X0 = -10, FENCE_X1 = 31;
+const FENCE_X0 = -26, FENCE_X1 = 32; // de la costa izquierda al muro derecho
 const BOAT_DEPLOY_TIME = 3.0;     // 3 s para poner la lancha
 const BOAT_LAUNCH_TIME = 2.0;     // 2 s para salir de la orilla
 const STONE_DMG_FENCE = 2;
 const STONE_DMG_PLAYER = 3;
 
 export const ZTYPES = {
-  normal:    { hp: 1,  speed: 1.7, dmg: 4,  score: 100,  scale: 1.05, eye: 0xff3b52, name: 'INFECTADO' },
-  runner:    { hp: 1,  speed: 4.4, dmg: 3,  score: 150,  scale: 0.95, eye: 0xffb833, name: 'CORREDOR' },
-  armored:   { hp: 4,  speed: 1.05, dmg: 9,  score: 250,  scale: 1.2,  eye: 0xff6633, name: 'BLINDADO' },
-  explosive: { hp: 1,  speed: 2.3, dmg: 26, score: 200,  scale: 1.05, eye: 0xff8811, name: 'VOLÁTIL' },
+  normal:    { hp: 1,  speed: 1.7, dmg: 4,  score: 100,  scale: 1.0,  eye: 0xff3b52, name: 'INFECTADO' },
+  runner:    { hp: 1,  speed: 4.4, dmg: 3,  score: 150,  scale: 1.0,  eye: 0xffb833, name: 'ASALTANTE' },
+  armored:   { hp: 4,  speed: 1.05, dmg: 9, score: 250,  scale: 1.0,  eye: 0xff6633, name: 'BLINDADO' },
+  explosive: { hp: 1,  speed: 2.3, dmg: 26, score: 200,  scale: 1.0,  eye: 0xff8811, name: 'VOLÁTIL' },
   climber:   { hp: 2,  speed: 2.1, dmg: 5,  score: 225,  scale: 1.0,  eye: 0x44ff99, name: 'TREPADOR' },
-  boss:      { hp: 46, speed: 0.8, dmg: 22, score: 2000, scale: 2.3,  eye: 0xd955ff, name: 'ABOMINACIÓN' },
+  boss:      { hp: 75, speed: 1.2, dmg: 35, score: 3500, scale: 1.0,  eye: 0xd955ff, name: 'DINOSAURIO JEFE' },
 };
 
 // Roles de asalto: rompen vallas / trepan vallas / cruzan por el mar en lancha
@@ -205,77 +206,98 @@ export class Entities {
     return w;
   }
 
-  // ---------- construcción zombis ----------
-  buildZombie(type) {
+  // ---------- construcción zombis y dinosaurios jefes ----------
+  buildZombie(type, bossVariant) {
     const cfg = ZTYPES[type];
     const g = new THREE.Group();
-    const skin = this.mats.skin[(Math.random() * this.mats.skin.length) | 0];
-    const cloth = this.mats.cloth[(Math.random() * this.mats.cloth.length) | 0];
-
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.48, 1.25, 4, 8), cloth);
-    body.position.y = 1.35; body.scale.set(1, 0.95, 0.6); body.castShadow = true; g.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.43, 12, 8), skin);
-    head.position.y = 2.43; head.castShadow = true; g.add(head);
-
-    const eyeMat = new THREE.MeshBasicMaterial({ color: cfg.eye });
-    for (const s of [-0.15, 0.15]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 8), eyeMat);
-      eye.position.set(s, 2.48, 0.4); g.add(eye);
-    }
+    let head = null;
+    let headY = 2.43 * cfg.scale;
+    let headZ = 0;
+    let headR = 0.52 * cfg.scale;
+    let bodyR = 0.65 * cfg.scale;
+    let bodyH = 2.2 * cfg.scale;
+    let hasMelee = false;
+    let bossName = cfg.name;
 
     const markerMat = new THREE.MeshBasicMaterial({ color: cfg.eye, transparent: true, opacity: 0 });
-    const threatMarker = new THREE.Mesh(new THREE.OctahedronGeometry(0.24, 0), markerMat);
-    threatMarker.position.set(0, 3.25, 0);
+    const threatMarker = new THREE.Mesh(new THREE.OctahedronGeometry(type === 'boss' ? 0.45 : 0.24, 0), markerMat);
+
+    if (type === 'boss') {
+      const bVar = bossVariant || (Math.random() < 0.5 ? 'carnotaurus' : 'titanosaurus');
+      const gltfMesh = models.createEnemy(bVar);
+      if (gltfMesh) {
+        g.add(gltfMesh);
+        if (bVar === 'carnotaurus') {
+          headY = 5.2; headZ = 4.2; headR = 0.95; bodyR = 2.4; bodyH = 5.8;
+          bossName = 'CARNOTAURUS';
+        } else {
+          headY = 9.2; headZ = 7.5; headR = 1.15; bodyR = 3.4; bodyH = 9.5;
+          bossName = 'TITANOSAURUS';
+        }
+      } else {
+        // Fallback procedural de jefe mientras carga el modelo
+        const skin = this.mats.skin[2];
+        const body = new THREE.Mesh(new THREE.CapsuleGeometry(1.2, 3.2, 4, 8), this.mats.cloth[0]);
+        body.position.y = 2.6; body.castShadow = true; g.add(body);
+        head = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8), skin);
+        head.position.y = 4.6; head.castShadow = true; g.add(head);
+        headY = 4.6; headR = 0.9; bodyR = 1.8; bodyH = 4.8;
+      }
+    } else {
+      // Sustituir con modelos de /resources/asaltantes
+      const gltfMesh = models.createEnemy(type);
+      if (gltfMesh) {
+        g.add(gltfMesh);
+        const catCfg = ENEMY_CATALOG[type] || ENEMY_CATALOG.normal;
+        headY = catCfg.headY;
+        headZ = catCfg.headZ || 0;
+        headR = catCfg.headR;
+        bodyR = catCfg.bodyR;
+        bodyH = catCfg.targetH;
+
+        if (type === 'explosive') {
+          // Vientre tóxico reactivo brillante
+          const bellyGlow = new THREE.Mesh(
+            new THREE.SphereGeometry(0.38, 8, 8),
+            new THREE.MeshStandardMaterial({ color: 0x5a200a, emissive: 0xff6a00, emissiveIntensity: 2.5, roughness: 0.5 })
+          );
+          bellyGlow.position.set(0, 1.15, 0.35);
+          g.add(bellyGlow);
+        }
+      } else {
+        // Fallback procedural de infectado mientras carga el modelo
+        const skin = this.mats.skin[(Math.random() * this.mats.skin.length) | 0];
+        const cloth = this.mats.cloth[(Math.random() * this.mats.cloth.length) | 0];
+        const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.48, 1.25, 4, 8), cloth);
+        body.position.y = 1.35; body.scale.set(1, 0.95, 0.6); body.castShadow = true; g.add(body);
+        head = new THREE.Mesh(new THREE.SphereGeometry(0.43, 12, 8), skin);
+        head.position.y = 2.43; head.castShadow = true; g.add(head);
+        const eyeMat = new THREE.MeshBasicMaterial({ color: cfg.eye });
+        for (const s of [-0.15, 0.15]) {
+          const eye = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 8), eyeMat);
+          eye.position.set(s, 2.48, 0.4); g.add(eye);
+        }
+        for (const s of [-1, 1]) {
+          const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.9, 4, 6), skin);
+          arm.position.set(s * 0.58, 1.45, 0.02);
+          arm.rotation.z = s * 0.8; arm.rotation.x = -0.2; g.add(arm);
+          const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.95, 4, 6), cloth);
+          leg.position.set(s * 0.24, 0.5, 0); leg.rotation.z = s * 0.08; g.add(leg);
+        }
+      }
+
+      // La mayoría de infectados porta arma cuerpo a cuerpo (excepto volátiles)
+      if (type !== 'explosive' && Math.random() < 0.65) {
+        g.add(this.buildMeleeWeapon());
+        hasMelee = true;
+      }
+    }
+
+    // Posición del marcador táctico sobre la cabeza
+    threatMarker.position.set(0, headY + 0.85, headZ);
     g.add(threatMarker);
 
-    const armL = 0.9, armR = type === 'climber' ? 1.5 : 0.9;
-    for (const s of [-1, 1]) {
-      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, s < 0 ? armL : armR, 4, 6), skin);
-      arm.position.set(s * 0.58, 1.45, 0.02);
-      arm.rotation.z = s * 0.8; arm.rotation.x = -0.2; g.add(arm);
-      const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.95, 4, 6), cloth);
-      leg.position.set(s * 0.24, 0.5, 0); leg.rotation.z = s * 0.08; g.add(leg);
-    }
-    if (type === 'runner') { g.rotation.x = 0.12; }
-    if (type === 'armored') {
-      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 0.28), this.mats.armor);
-      plate.position.set(0, 1.4, 0.28); g.add(plate);
-      for (const s of [-1, 1]) {
-        const pad = new THREE.Mesh(new THREE.SphereGeometry(0.26, 8, 6), this.mats.armor);
-        pad.position.set(s * 0.62, 1.95, 0); g.add(pad);
-      }
-      const helm = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), this.mats.armor);
-      helm.position.y = 2.5; g.add(helm);
-    }
-    if (type === 'explosive') {
-      const belly = new THREE.Mesh(new THREE.SphereGeometry(0.46, 10, 8), this.mats.belly);
-      belly.position.set(0, 1.15, 0.35); g.add(belly);
-    }
-    if (type === 'climber') {
-      const clawM = new THREE.MeshStandardMaterial({ color: 0x9aa38f, roughness: 0.5 });
-      for (const s of [-1, 1]) for (let i = 0; i < 3; i++) {
-        const claw = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.4, 5), clawM);
-        claw.position.set(s * 0.95, 0.9 - i * 0.12, 0.35); claw.rotation.x = Math.PI; g.add(claw);
-      }
-    }
-    if (type === 'boss') {
-      const spikeM = new THREE.MeshStandardMaterial({ color: 0x2a2a33, roughness: 0.5 });
-      for (const s of [-1, 1]) for (let i = 0; i < 3; i++) {
-        const sp = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.9, 6), spikeM);
-        sp.position.set(s * (0.6 + i * 0.18), 2.0 - i * 0.28, -0.2); sp.rotation.z = s * 0.7; g.add(sp);
-      }
-      const chest = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8),
-        new THREE.MeshStandardMaterial({ color: 0x220011, emissive: 0xc44dff, emissiveIntensity: 2.5 }));
-      chest.position.set(0, 1.5, 0.42); g.add(chest);
-    }
-    // La mayoría porta un arma cuerpo a cuerpo (excepto volátiles y el jefe)
-    let hasMelee = false;
-    if ((type === 'normal' || type === 'runner' || type === 'armored' || type === 'climber') && Math.random() < 0.7) {
-      g.add(this.buildMeleeWeapon());
-      hasMelee = true;
-    }
-    g.scale.setScalar(cfg.scale);
-    return { g, head, threatMarker, markerMat, hasMelee };
+    return { g, head, threatMarker, markerMat, hasMelee, headY, headZ, headR, bodyR, bodyH, bossName };
   }
 
   pickRole(type, forceLand) {
@@ -290,7 +312,8 @@ export class Entities {
 
   spawn(type, x, z, opt) {
     const cfg = ZTYPES[type];
-    const { g, head, threatMarker, markerMat, hasMelee } = this.buildZombie(type);
+    const bossVariant = (opt && opt.bossVariant) || (Math.random() < 0.5 ? 'carnotaurus' : 'titanosaurus');
+    const { g, head, threatMarker, markerMat, hasMelee, headY, headZ, headR, bodyR, bodyH, bossName } = this.buildZombie(type, bossVariant);
     const forceLand = !!(opt && opt.forceLand);
     const role = this.pickRole(type, forceLand);
     let sx = x, sz = z, state = 'advance';
@@ -312,19 +335,23 @@ export class Entities {
     this.scene.add(g);
     const waveBonus = Math.max(0, (this.wave || 1) - 6) * 0.12;
     const meleeBonus = hasMelee ? 1 : 0;
+    const specificCfg = Object.assign({}, cfg);
+    if (type === 'boss' && bossName) specificCfg.name = bossName;
     const z0 = {
-      type, cfg, g, head, threatMarker, markerMat,
-      role, hasMelee,
+      type, cfg: specificCfg, g, head, threatMarker, markerMat,
+      role, hasMelee, bossVariant,
+      modelType: (type === 'boss' ? bossVariant : type),
+      name: (type === 'boss' ? bossName : cfg.name),
       thrower: (type !== 'explosive' && type !== 'boss') && Math.random() < 0.7,
       stoneCd: 2 + Math.random() * 3,
       hp: cfg.hp, maxHp: cfg.hp,
       speed: cfg.speed * (1 + Math.min(0.5, (this.wave || 1) * 0.02)),
       dmg: Math.round(cfg.dmg * (1 + waveBonus)) + meleeBonus,
       score: cfg.score + (role === 'sea' ? 50 : 0),
-      headY: 2.43 * cfg.scale, headR: 0.52 * cfg.scale, bodyR: 0.65 * cfg.scale,
+      headY, headZ, headR, bodyR, bodyH,
       state, phase: Math.random() * 7,
       lane: sx, attackT: 0, climbT: 0, summonT: 6,
-      fenceIndex: -1, climbFromZ: 0, climbToZ: 0,
+      fenceIndex: -1, climbFromZ: 0, climbToZ: 0, blockedFence: null,
       embark, land, sailX, boat: null, boatT: 0, landT: 0,
       burnT: 0, shockT: 0, groanT: 3 + Math.random() * 9,
       dead: false, deathT: 0, flashT: 0,
@@ -558,7 +585,7 @@ export class Entities {
     }
   }
 
-  // ---------- vallas (multi-capa, con fallback legado) ----------
+  // ---------- vallas (multi-capa y colocadas en 3D) ----------
   getFences(ctx) {
     if (ctx && Array.isArray(ctx.fences) && ctx.fences.length) return ctx.fences;
     const alive = !(ctx && ctx.fenceAlive === false);
@@ -569,6 +596,34 @@ export class Entities {
       if (fences[i] && fences[i].alive !== false && FENCE_ZS[i] > zPos - 0.5) return i;
     }
     return -1;
+  }
+  findBlockingFence(gx, gz, fencesOrCtx, placedFencesArg) {
+    let fences = fencesOrCtx;
+    let placedFences = placedFencesArg;
+    if (fencesOrCtx && !Array.isArray(fencesOrCtx) && typeof fencesOrCtx === 'object') {
+      fences = fencesOrCtx.fences;
+      placedFences = fencesOrCtx.placedFences || placedFencesArg;
+    }
+    // Comprobar vallas 3D y personalizadas (soporta cualquier ángulo: vertical, horizontal, diagonal)
+    if (placedFences && placedFences.length) {
+      for (let i = 0; i < placedFences.length; i++) {
+        const f = placedFences[i];
+        if (!f.alive) continue;
+        const dx = Math.cos(f.rotation || 0), dz = Math.sin(f.rotation || 0);
+        const hL = (f.width || 4.0) * 0.5;
+        const proj = THREE.MathUtils.clamp((gx - f.x) * dx + (gz - f.z) * dz, -hL, hL);
+        const cx = f.x + proj * dx, cz = f.z + proj * dz;
+        const dist = Math.hypot(gx - cx, gz - cz);
+        if (dist < 1.45 && cz >= gz - 0.6) {
+          return { fenceObj: f, fenceIndex: f.layerIndex !== undefined ? f.layerIndex : -1, z: cz, x: cx };
+        }
+      }
+    }
+    const ni = this.nextFenceIndex(gz, fences);
+    if (ni >= 0 && fences[ni] && fences[ni].alive !== false) {
+      return { fenceObj: null, fenceIndex: ni, z: FENCE_ZS[ni], x: gx };
+    }
+    return null;
   }
 
   damage(z, amount, opt) {
@@ -769,13 +824,12 @@ export class Entities {
             z.stoneCd = 0.8;
           }
         } else {
-          const ni = z.state === 'fence' ? z.fenceIndex : this.nextFenceIndex(g.position.z, fences);
-          if (ni >= 0 && fences[ni] && fences[ni].alive !== false) {
-            const fx = THREE.MathUtils.clamp(g.position.x, FENCE_X0, FENCE_X1);
-            const fp = new THREE.Vector3(fx, 2.4, FENCE_ZS[ni]);
+          const blocker = this.findBlockingFence(g.position.x, g.position.z, fences, ctx && ctx.placedFences);
+          if (blocker) {
+            const fp = new THREE.Vector3(blocker.x, 2.4, blocker.z);
             const d = g.position.distanceTo(fp);
             if (d < 26) {
-              this.throwStone(z, fp, 'fence', ni);
+              this.throwStone(z, fp, 'fence', blocker.fenceIndex);
               z.stoneCd = 3 + Math.random() * 2.5;
             } else {
               z.stoneCd = 1.0;
@@ -793,8 +847,10 @@ export class Entities {
         g.position.x = THREE.MathUtils.clamp(g.position.x, FENCE_X0 - 1, FENCE_X1 + 1);
         const dz = target ? Math.sign(target.z - g.position.z) * 0.6 : 1;
         g.position.z += dz * dt * z.speed * slowed * (prey ? 0.9 : 1);
-        g.position.y = Math.abs(Math.sin(t * (z.type === 'runner' ? 7 : 2.6) + z.phase)) * (z.type === 'runner' ? 0.3 : 0.16);
-        g.rotation.y = Math.sin(t * 1.4 + z.phase) * 0.14;
+        const bobSpeed = z.type === 'boss' ? (z.bossVariant === 'titanosaurus' ? 1.8 : 3.2) : (z.type === 'runner' ? 7 : 2.6);
+        const bobAmp = z.type === 'boss' ? (z.bossVariant === 'titanosaurus' ? 0.25 : 0.2) : (z.type === 'runner' ? 0.3 : 0.16);
+        g.position.y = Math.abs(Math.sin(t * bobSpeed + z.phase)) * bobAmp;
+        g.rotation.y = Math.sin(t * 1.4 + z.phase) * 0.12;
         if (prey && g.position.distanceTo(prey.g.position) < 1.6) {
           prey.dead = true; prey.state = 'dead';
           const cp = prey.g.position.clone(); cp.y = 1.2;
@@ -802,36 +858,58 @@ export class Entities {
           this.scene.remove(prey.g);
           H.civDown && H.civDown(prey);
         }
-        const ni = this.nextFenceIndex(g.position.z, fences);
-        if (z.type === 'explosive' && ni >= 0 && g.position.z >= FENCE_ZS[ni] - 2.1) {
+        const blocker = this.findBlockingFence(g.position.x, g.position.z, fences, ctx && ctx.placedFences);
+        if (z.type === 'explosive' && blocker && g.position.z >= blocker.z - 2.1) {
           const p = g.position.clone(); p.y = 1.2;
           z.dead = true; z.deathT = 0.01;
           this.scene.remove(g); this.list.splice(i, 1);
           H.explode && H.explode(p, 5.5, 34, z);
+          if (blocker.fenceObj) {
+            blocker.fenceObj.hp = Math.max(0, blocker.fenceObj.hp - 35);
+            if (blocker.fenceObj.hp <= 0) blocker.fenceObj.alive = false;
+          }
+          if (blocker.fenceIndex >= 0) {
+            H.fenceDamage && H.fenceDamage(35, p, blocker.fenceIndex);
+          }
           continue;
         }
-        if (ni < 0) {
+        if (!blocker) {
           // Sin vallas por delante: si ya rebasó la línea interior, invade la torre
           if (g.position.z >= FENCE_ZS[FENCE_ZS.length - 1] - 1.0) z.state = 'invade';
-        } else if (g.position.z >= FENCE_ZS[ni] - 1.5) {
+        } else if (g.position.z >= blocker.z - 1.5) {
           if (z.role === 'climber' || z.type === 'climber') {
-            z.state = 'climb'; z.climbT = 0; z.fenceIndex = ni;
-            z.climbFromZ = g.position.z; z.climbToZ = FENCE_ZS[ni] + 1.9;
+            z.state = 'climb'; z.climbT = 0; z.fenceIndex = blocker.fenceIndex;
+            z.blockedFence = blocker.fenceObj;
+            z.climbFromZ = g.position.z; z.climbToZ = blocker.z + 1.9;
           } else {
-            z.state = 'fence'; z.fenceIndex = ni; z.attackT = 0;
+            z.state = 'fence'; z.fenceIndex = blocker.fenceIndex;
+            z.blockedFence = blocker.fenceObj;
+            z.attackT = 0;
           }
         }
       } else if (z.state === 'fence') {
         const fi = z.fenceIndex;
-        if (fi < 0 || !fences[fi] || fences[fi].alive === false) { z.state = 'advance'; continue; }
-        const fz = FENCE_ZS[fi];
+        const bf = z.blockedFence;
+        if (bf && !bf.alive) { z.state = 'advance'; z.blockedFence = null; continue; }
+        if (!bf && (fi < 0 || !fences[fi] || fences[fi].alive === false)) { z.state = 'advance'; continue; }
+        const fz = bf ? bf.z : (fi >= 0 ? FENCE_ZS[fi] : g.position.z);
         g.position.z += ((fz - 1.2) - g.position.z) * Math.min(1, dt * 4);
         g.position.y = Math.abs(Math.sin(t * 5 + z.phase)) * 0.1;
         g.rotation.x = attackAnim ? -0.35 : 0;
         z.fenceTick = (z.fenceTick || 0) + dt;
         if (z.fenceTick > 0.95) {
           z.fenceTick = 0; z.attackT = 0.35;
-          H.fenceDamage && H.fenceDamage(z.dmg, g.position.clone(), fi);
+          if (bf) {
+            bf.hp = Math.max(0, bf.hp - z.dmg);
+            if (bf.hp <= 0) {
+              bf.alive = false;
+              z.state = 'advance';
+              z.blockedFence = null;
+            }
+          }
+          if (fi >= 0) {
+            H.fenceDamage && H.fenceDamage(z.dmg, g.position.clone(), fi);
+          }
         }
         if (z.type === 'boss') {
           z.summonT -= dt;
