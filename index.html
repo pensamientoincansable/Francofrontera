@@ -421,6 +421,29 @@ body.is-touch #touchControls{display:block}
   letter-spacing:.12em;padding:8px 18px;cursor:pointer;transition:all .15s;
 }
 .fe-btn-done:hover{box-shadow:0 0 18px #7cf8ff88}
+/* Pie del editor: COLOCAR (grande, siempre visible) + SALIR */
+.fe-footer{
+  display:flex;gap:10px;justify-content:center;align-items:stretch;flex-wrap:wrap;
+  border-top:1px solid #1f3942;padding-top:10px;margin-top:2px;
+}
+.fe-btn-place{
+  flex:1 1 240px;min-height:46px;
+  background:linear-gradient(180deg,#123a46,#0d2833);
+  border:1.5px solid var(--cyan);color:var(--cyan);
+  font:800 14px 'Barlow Condensed';letter-spacing:.14em;cursor:pointer;
+  transition:all .15s;box-shadow:0 0 12px #7cf8ff22 inset;
+}
+.fe-btn-place:hover:not(:disabled){background:var(--cyan);color:#071017;box-shadow:0 0 18px #7cf8ff88}
+.fe-btn-place:active:not(:disabled){transform:scale(.98)}
+.fe-btn-place:disabled{opacity:.4;cursor:not-allowed}
+
+/* Cursor oculto en combate (PC): estilo pointer lock. ALT lo muestra. */
+body.hide-cursor, body.hide-cursor *{cursor:none !important}
+
+/* Ajustes: casillas y notas */
+.setrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--cyan);flex:none}
+.set-note{font:10px 'JetBrains Mono';color:#7d99a0;line-height:1.6;margin:6px 0 2px}
+.set-note b{color:#dffcff}
 
 /* ===== PANTALLAS / MODALES ===== */
 .screen{
@@ -494,6 +517,49 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
     mask-image:radial-gradient(circle at center, transparent 0, transparent 40vmin, black 44vmin, black 100%);
     -webkit-mask-image:radial-gradient(circle at center, transparent 0, transparent 40vmin, black 44vmin, black 100%);
   }
+
+  /* --- Editor de vallado como HOJA INFERIOR (bottom sheet): cabe en pantalla,
+     se desplaza con el dedo y SALIR/COLOCAR siempre quedan a la vista --- */
+  #fenceEditorHUD{
+    top:auto;bottom:0;left:0;right:0;transform:none;
+    width:100%;max-height:58vh;overflow-y:auto;
+    border-left:0;border-right:0;border-bottom:0;
+    padding:10px 12px calc(12px + env(safe-area-inset-bottom));
+    animation:feInUp .22s ease-out;
+  }
+  @keyframes feInUp{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
+  #fenceEditorHUD .fe-header h2{font-size:16px}
+  #fenceEditorHUD .fe-kicker{font-size:8px}
+  #fenceEditorHUD .fe-stat-pill{font-size:9px;padding:3px 7px}
+  #fenceEditorHUD .fe-models{
+    display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;padding-bottom:4px;
+  }
+  #fenceEditorHUD .fe-card{min-width:150px;flex:0 0 auto;scroll-snap-align:start}
+  #fenceEditorHUD .fe-controls-row{flex-direction:column;align-items:stretch;gap:8px}
+  #fenceEditorHUD .fe-btn-rot,#fenceEditorHUD .fe-btn-tool{flex:1 1 auto;font-size:9px;padding:7px 6px}
+  #fenceEditorHUD .fe-footer{position:sticky;bottom:0;background:rgba(6,15,22,.98);margin:0 -12px calc(-12px - env(safe-area-inset-bottom));padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+  #fenceEditorHUD .fe-btn-place{min-height:52px;font-size:15px}
+  #fenceEditorHUD .fe-btn-done{min-height:52px}
+
+  /* --- Intermisión: por encima de la barra de acciones táctiles, sin salirse --- */
+  #interBar{
+    bottom:calc(140px + env(safe-area-inset-bottom));
+    width:calc(100vw - 24px);font-size:11px;padding:8px 10px;
+  }
+  #interBar .ib-btn{font-size:10px;padding:7px 9px}
+
+  /* --- Barra táctile de acciones: no choca con el cluster derecho --- */
+  .touch-action-bar{
+    left:10px;max-width:calc(100vw - 118px);flex-wrap:wrap;
+    bottom:calc(78px + env(safe-area-inset-bottom));
+  }
+  .tbtn-pill{font-size:9px;padding:6px 8px}
+
+  /* --- Radio y toasts: que no se salgan de pantalla --- */
+  #radio{max-width:calc(100vw - 28px);bottom:calc(118px + env(safe-area-inset-bottom));overflow-wrap:anywhere}
+  .toast{white-space:normal;max-width:94vw;font-size:15px;line-height:1.35}
+  #bossbar{width:min(360px,80vw)}
 }
 </style>
 </head>
@@ -642,10 +708,12 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
             <button class="fe-btn-tool" id="feToolRepair">🔧 REPARAR VALLAS</button>
           </div>
         </div>
+      </div>
 
-        <div class="fe-actions-group">
-          <button class="fe-btn-done" id="btnCloseFenceEditor">SALIR [V] →</button>
-        </div>
+      <!-- Pie del editor: COLOCAR + SALIR, siempre visibles (también en móvil) -->
+      <div class="fe-footer">
+        <button class="fe-btn-place" id="fePlaceBtn">🛡 COLOCAR VALLA EN LA RETÍCULA</button>
+        <button class="fe-btn-done" id="btnCloseFenceEditor">SALIR [V] ✕</button>
       </div>
     </div>
   </div>
@@ -719,7 +787,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
       <button class="start ghost" id="btnHelp">CONTROLES</button>
     </div>
     <div class="menuBest" id="menuBest">RÉCORD LOCAL: 0 PTS</div>
-    <div class="controls"><b>PC:</b> Ratón apunta · Click dispara · RMB/Espacio zoom telescópico · ESC / botón QUITAR MIRA para salir · <b>E</b> torreta autónoma (hasta 4) · <b>L</b> lancha de defensa en nuestra playa (200 pts) · <b>R</b> recarga · <b>F</b> repara · <b>B</b> mejoras<br><b>Android:</b> Arrastra para apuntar · Botón MIRA con zoom y desenfoque · Botón QUITAR MIRA para salir · Botón FUEGO · Botón TORRETA · Botón LANCHA</div>
+    <div class="controls"><b>PC:</b> Ratón gira la vista 360° (sin invertir: derecha = derecha, arriba = arriba) · Click dispara · RMB/Espacio zoom telescópico · <b>ALT</b> muestra el cursor (oculto en combate) · ESC / botón QUITAR MIRA para salir · <b>V</b> editor de vallas (click = colocar en la retícula) · <b>E</b> torreta autónoma (hasta 4) · <b>L</b> lancha de defensa en nuestra playa (200 pts) · <b>R</b> recarga · <b>F</b> repara · <b>B</b> mejoras<br><b>Android:</b> Arrastra para girar la vista 360° · Tocar la pantalla o pulsar COLOCAR coloca la valla en la retícula (editor <b>VALLAS</b>) · Botón MIRA con zoom y desenfoque · Botón QUITAR MIRA para salir · Botón FUEGO · Botón TORRETA · Botón LANCHA</div>
   </div>
 </div>
 
@@ -761,6 +829,9 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
     <div class="setrow"><span>Efectos</span><input type="range" id="setSfx" min="0" max="100" value="90"><b id="sfxVal">90</b></div>
     <div class="setrow"><span>Calidad gráfica</span><select id="setQuality"><option value="high">Alta</option><option value="med">Media</option><option value="low">Baja</option></select></div>
     <div class="setrow"><span>Voz de radio (síntesis)</span><select id="setVoice"><option value="on">Activada</option><option value="off">Desactivada</option></select></div>
+    <div class="setrow"><span>Invertir puntería horizontal (X)</span><input type="checkbox" id="setInvertX"><b id="invertXVal">NO</b></div>
+    <div class="setrow"><span>Invertir puntería vertical (Y)</span><input type="checkbox" id="setInvertY"><b id="invertYVal">NO</b></div>
+    <p class="set-note">Por defecto la cámara NO invierte ninguna dirección: ratón/dedo a la derecha → la vista gira a la derecha. En PC el cursor se oculta en combate; mantén <b>ALT</b> para mostrarlo.</p>
     <div class="btnrow"><button class="start" id="btnCloseSettings">VOLVER →</button></div>
   </div>
 </div>
@@ -776,11 +847,13 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
 <div class="screen hidden" id="helpMenu">
   <div class="card"><div class="kicker">MANUAL DE COMBATE ADAPTATIVO</div><h2>CONTROLES PC & ANDROID</h2>
     <div class="keys">
-      <b>RATÓN / ARRASTRE</b><span>Apuntar suavemente desde la torre elevada (cañón del Mauser alineado al horizonte)</span>
-      <b>CLICK IZQ / BOTÓN FUEGO</b><span>Disparar arma seleccionada (o colocar valla en modo edición)</span>
+      <b>RATÓN / ARRASTRE (360°)</b><span>La cámara gira 360° libremente, con recorrido completo hasta el horizonte y al pie de la torre. Sin invertir direcciones: derecha = girar a la derecha, arriba = subir. (Opción de invertir X/Y en AJUSTES, desactivada por defecto)</span>
+      <b>CURSOR (PC)</b><span>Oculto en combate (estilo puntero bloqueado). Mantén <b>ALT</b> para mostrarlo y alcanzar los botones; al soltarlo (o hacer clic) se vuelve a ocultar</span>
+      <b>CLICK IZQ / BOTÓN FUEGO</b><span>Disparar arma seleccionada (o colocar valla en modo edición, en el punto exacto de la retícula)</span>
       <b>CLICK DER / ESPACIO / BOTÓN MIRA</b><span>Activar mira telescópica con zoom y desenfoque periférico</span>
-      <b>V / BOTÓN VALLAS</b><span>Modo Edición de Vallado: colocar vallas personalizadas, rotar y demoler</span>
-      <b>R / CLICK DER (EN EDITOR)</b><span>Rotar valla (horizontal 0°, diagonal 45°, vertical 90°, diagonal 135°)</span>
+      <b>V / BOTÓN VALLAS</b><span>Modo Edición de Vallado: colocar vallas personalizadas con precisión en todo el corredor (costa → muro, horizonte → sacos), rotar, demoler y reparar. El holograma + retícula marcan el punto exacto; el holograma se pone rojo si la zona está fuera de límites u ocupada</span>
+      <b>TOC / CLICK (EN EDITOR)</b><span>PC: click izquierdo en el suelo. Móvil: tocar la pantalla o pulsar COLOCAR. Rueda del ratón o R: rotación</span>
+      <b>R / RUELA (EN EDITOR)</b><span>Rotar valla (horizontal 0°, diagonal 45°, vertical 90°, diagonal 135°)</span>
       <b>EXTENDER TIEMPO</b><span>+30 segundos de preparación antes de cada ronda a cambio de 50 puntos</span>
       <b>E / C / BOTÓN TORRETA</b><span>Colocar ametralladora autónoma (hasta 4 en el perímetro)</span>
       <b>L / BOTÓN LANCHA</b><span>Fabricar lancha de defensa en nuestra playa (200 pts, oleada 2+, máx. 2)</span>
