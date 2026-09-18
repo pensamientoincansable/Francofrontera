@@ -1,0 +1,11 @@
+Model Information:
+* title:	Terrorist 3
+* source:	https://sketchfab.com/3d-models/terrorist-3-17b92a589f7c4dfc926cdff3461eaaa5
+* author:	Upgrade titan camera man (https://sketchfab.com/Upgradetitancameraman)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Terrorist 3" (https://sketchfab.com/3d-models/terrorist-3-17b92a589f7c4dfc926cdff3461eaaa5) by Upgrade titan camera man (https://sketchfab.com/Upgradetitancameraman) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

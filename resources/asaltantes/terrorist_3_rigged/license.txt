@@ -1,0 +1,11 @@
+Model Information:
+* title:	Terrorist 3 (Rigged)
+* source:	https://sketchfab.com/3d-models/terrorist-3-rigged-0cc0cb619c8f451d9e123ea873061749
+* author:	fake gman (https://sketchfab.com/tricky_modeler)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Terrorist 3 (Rigged)" (https://sketchfab.com/3d-models/terrorist-3-rigged-0cc0cb619c8f451d9e123ea873061749) by fake gman (https://sketchfab.com/tricky_modeler) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
