@@ -56,7 +56,9 @@ const S = {
   // invertX/invertY: por defecto NO se invierte ninguna dirección (ratón normal).
   // aimSens: multiplicador de sensibilidad SOLO con la mira puesta (antes el zoom
   // dividía la sensibilidad por 4.5×-9× y apuntar se volvía lentísimo).
-  settings: { sens: 1, aimSens: 1.2, master: 80, music: 55, sfx: 90, quality: 'high', voice: 'on', invertX: false, invertY: false },
+  // weather: efectos climáticos (tormenta, lluvia, rayos) activados por defecto.
+  // tide: velocidad de las mareas (0× = mar en calma … 3× = marejada rápida).
+  settings: { sens: 1, aimSens: 1.2, master: 80, music: 55, sfx: 90, quality: 'high', voice: 'on', invertX: false, invertY: false, weather: true, tide: 1 },
 };
 try {
   const b = JSON.parse(localStorage.getItem('frtd_best_v1') || '0'); S.best = b | 0;
@@ -153,6 +155,8 @@ audio.vol.sfx = S.settings.sfx / 100;
 audio.voiceOn = S.settings.voice === 'on';
 const fx = new FX(scene);
 const world = new World(scene, camera, renderer);
+// Velocidad de las mareas guardada en AJUSTES (0× = mar en calma)
+world.tideSpeed = Number.isFinite(S.settings.tide) ? S.settings.tide : 1;
 
 // ---------------- entidades + hooks ----------------
 const ent = new Entities(scene, fx, {
@@ -632,6 +636,7 @@ function deployBoat() {
 
 // ---------------- combate ----------------
 const _dir = new THREE.Vector3(), _o = new THREE.Vector3(), _m = new THREE.Vector3(), _tmp = new THREE.Vector3();
+const _ppTmp = new THREE.Vector3(); // posición real del tirador cuando la cámara está en el editor
 function dmgMult() { return 1 + S.up.dmg * 0.25; }
 function reloadMult() { return Math.pow(0.82, S.up.reload); }
 function magSize(i) { return Math.round(WEAPONS[i].mag * (1 + S.up.mag * 0.3)); }
@@ -1035,6 +1040,7 @@ function openFenceEditor() {
   document.body.classList.add('fe-editing');   // la interfaz se recoloca (ver CSS)
   setZoom(false); // Quitar mira telescópica en el editor
   releaseLock();  // en el editor el cursor debe verse (hay botones que tocar)
+  enterEditorCamera(); // la vista vuela rápidamente sobre el terreno construible (≈6 m)
   const fe = $('fenceEditorHUD');
   if (fe) fe.classList.remove('hidden');
   const fab = $('feFab');
@@ -1045,12 +1051,17 @@ function openFenceEditor() {
   if (world.setEditorOverlay) world.setEditorOverlay(true); // zona construible + retícula
   updateCursorState();
   updateFenceEditorUI();
-  toast('MODO EDICIÓN DE VALLADO // COLOCA EN LA RETÍCULA');
+  toast('EDICIÓN DE VALLADO // WASD: MOVER · SHIFT/C: ALTURA · RUEDA: ZOOM · ESPACIO: COLOCAR');
   audio.click();
 }
 
 function closeFenceEditor() {
   S.fenceEditMode = false;
+  editorCam.active = false;   // la cámara vuelve al cuerpo del tirador
+  edKeys.down = false;
+  edDrag.active = false;
+  camPitch = clamp(camPitch, CAM_PITCH_MIN, CAM_PITCH_MAX);
+  if (camPitch < -1.0) camPitch = CAM_BASE_PITCH; // evitar quedarse mirando al suelo
   document.body.classList.remove('fe-panel-open');
   document.body.classList.remove('fe-editing');
   const fe = $('fenceEditorHUD');
@@ -1105,6 +1116,90 @@ function computeFenceAimPoint(out) {
     }
   }
   return out.copy(fenceAimPoint);
+}
+
+// ---------------- CÁMARA LIBRE DEL EDITOR DE VALLADO ----------------
+// Al pulsar V la vista "vuela" RÁPIDAMENTE hasta unos 6 m de altura sobre el
+// terreno construible. Desde ahí:
+//   · CUERPO (posición de la visión): WASD/flechas o joystick con total
+//     libertad; Shift asciende y C desciende.
+//   · CABEZA (orientación): se gira ARRASTRANDO el ratón (o el dedo en móvil).
+//   · RUEDA del ratón: zoom de la vista.
+//   · COLOCACIÓN por TECLA: ESPACIO o ENTER ponen la valla exactamente en la
+//     retícula central, sin depender de clicks imprecisos.
+const EDITOR_EYE_Y = 6;            // altura inicial de la vista sobre el terreno (≈6 m)
+const editorCam = {
+  active: false,
+  x: 0, y: EDITOR_EYE_Y, z: -8,
+  fov: 62, fovT: 55,               // zoom de la vista del editor (FOV objetivo)
+  transT: 1, transDur: 0.45,       // vuelo de entrada (rápido, con suavizado)
+  fromX: 0, fromY: 0, fromZ: 0, fromYaw: 0, fromPitch: 0,
+  tgtYaw: 0, tgtPitch: -1.08,
+};
+const edKeys = { down: false };    // C = descender (Shift asciende vía moveKeys.sprint)
+const edDrag = { active: false, moved: false, x: 0, y: 0, sx: 0, sy: 0 };
+
+function nearestAngle(a, target) {
+  // Equivalente a 'target' más próximo a 'a': así el giro va por el camino corto
+  const twoPi = Math.PI * 2;
+  let t = target;
+  while (t - a > Math.PI) t -= twoPi;
+  while (t - a < -Math.PI) t += twoPi;
+  return t;
+}
+function easeOutCubic(k) { return 1 - Math.pow(1 - k, 3); }
+
+function enterEditorCamera() {
+  editorCam.active = true;
+  editorCam.fromX = camera.position.x; editorCam.fromY = camera.position.y; editorCam.fromZ = camera.position.z;
+  editorCam.fromYaw = camYaw; editorCam.fromPitch = camPitch;
+  // Punto de partida: centro del corredor construible, a unos 6 m de altura,
+  // ligeramente al sur del centro y mirando hacia el horizonte de aparición.
+  editorCam.x = (BUILD_X0 + BUILD_X1) / 2;
+  editorCam.y = EDITOR_EYE_Y;
+  editorCam.z = (BUILD_Z0 + BUILD_Z1) / 2 + 8;
+  editorCam.fov = camFov; editorCam.fovT = 55;
+  editorCam.tgtYaw = nearestAngle(camYaw, 0); // yaw 0 = mirar al norte (−Z)
+  editorCam.tgtPitch = -1.08;                 // vista inclinada hacia el terreno
+  editorCam.transT = 0;
+}
+
+function updateEditorCam(dt) {
+  // Vuelo de entrada: la vista se posiciona rápidamente sobre el terreno
+  if (editorCam.transT < editorCam.transDur) {
+    editorCam.transT = Math.min(editorCam.transDur, editorCam.transT + dt);
+    const k = easeOutCubic(editorCam.transT / editorCam.transDur);
+    camera.position.set(
+      editorCam.fromX + (editorCam.x - editorCam.fromX) * k,
+      editorCam.fromY + (editorCam.y - editorCam.fromY) * k,
+      editorCam.fromZ + (editorCam.z - editorCam.fromZ) * k
+    );
+    camYaw = editorCam.fromYaw + (editorCam.tgtYaw - editorCam.fromYaw) * k;
+    camPitch = editorCam.fromPitch + (editorCam.tgtPitch - editorCam.fromPitch) * k;
+    return;
+  }
+  // CUERPO: WASD/flechas o joystick desplazan la cámara en el plano del suelo
+  let ix = (moveKeys.r ? 1 : 0) - (moveKeys.l ? 1 : 0);
+  let iz = (moveKeys.b ? 1 : 0) - (moveKeys.f ? 1 : 0);
+  if (joy.active && joy.mag > 0.14) { ix += joy.dx; iz += joy.dy; }
+  const mag = Math.hypot(ix, iz);
+  if (mag > 0.05) {
+    const ux = ix / Math.max(1, mag), uz = iz / Math.max(1, mag);
+    // Más alto = más rápido: a ras de suelo el movimiento es fino; en cenital, ágil
+    const speed = (6.5 + editorCam.y * 0.6) * Math.min(1, mag);
+    const sy = Math.sin(camYaw), cy = Math.cos(camYaw);
+    const fwd = -uz, str = ux; // misma convención que el movimiento a pie
+    editorCam.x += (-sy * fwd + cy * str) * speed * dt;
+    editorCam.z += (-cy * fwd - sy * str) * speed * dt;
+  }
+  // Altura: Shift asciende, C desciende
+  const lift = (moveKeys.sprint ? 1 : 0) - (edKeys.down ? 1 : 0);
+  if (lift) editorCam.y += lift * 9 * dt;
+  // Límites: todo el corredor construible con margen de sobra
+  editorCam.x = clamp(editorCam.x, BUILD_X0 - 36, BUILD_X1 + 36);
+  editorCam.z = clamp(editorCam.z, BUILD_Z0 - 36, BUILD_Z1 + 48);
+  editorCam.y = clamp(editorCam.y, 1.6, 46);
+  camera.position.set(editorCam.x, editorCam.y, editorCam.z);
 }
 
 function extendIntermissionTime(seconds = 30, cost = 50) {
@@ -1692,6 +1787,13 @@ function applySettingsToUI() {
   const syi = $('setInvertY'); if (syi) syi.checked = !!S.settings.invertY;
   const vxi = $('invertXVal'); if (vxi) vxi.textContent = S.settings.invertX ? 'SÍ' : 'NO';
   const vyi = $('invertYVal'); if (vyi) vyi.textContent = S.settings.invertY ? 'SÍ' : 'NO';
+  // Clima y mareas
+  const weatherOn = S.settings.weather !== false;
+  const swe = $('setWeather'); if (swe) swe.checked = weatherOn;
+  const wv = $('weatherVal'); if (wv) wv.textContent = weatherOn ? 'SÍ' : 'NO';
+  const tide = Number.isFinite(S.settings.tide) ? S.settings.tide : 1;
+  const sti = $('setTide'); if (sti) sti.value = Math.round(tide * 100);
+  const tv = $('tideVal'); if (tv) tv.textContent = tide.toFixed(1) + '×';
 }
 function applyQuality() {
   world.setQuality(S.settings.quality);
@@ -1750,11 +1852,28 @@ addEventListener('mousemove', e => {
   S.aim.y = -((e.clientY / innerHeight) * 2 - 1);
   if (isTouchDevice) return;
   if (!S.playing || S.paused || S.screen !== 'game') return;
+  if (S.fenceEditMode) {
+    // CABEZA del editor: la vista gira solo mientras se ARRASTRA el ratón, así
+    // el cursor sigue visible y libre para manejar los botones del panel.
+    if (edDrag.active) {
+      const dx = e.clientX - edDrag.x, dy = e.clientY - edDrag.y;
+      edDrag.x = e.clientX; edDrag.y = e.clientY;
+      if (Math.hypot(e.clientX - edDrag.sx, e.clientY - edDrag.sy) > 6) edDrag.moved = true;
+      if (dx || dy) applyLook(dx, dy, false);
+    }
+    return;
+  }
   const dx = e.movementX || 0, dy = e.movementY || 0;
   if (dx || dy) applyLook(dx, dy, false);
 });
 cvs.addEventListener('mousedown', e => {
-  if (e.button === 0 && S.fenceEditMode) { handleFenceEditorClick(); return; }
+  if (e.button === 0 && S.fenceEditMode) {
+    // Arrastrar = girar la vista (cabeza); un click corto = colocar en la retícula
+    edDrag.active = true; edDrag.moved = false;
+    edDrag.x = edDrag.sx = e.clientX; edDrag.y = edDrag.sy = e.clientY;
+    e.preventDefault();
+    return;
+  }
   if (e.button === 2 && S.fenceEditMode) { cycleFenceRotation(); return; }
   // Re-enganchar el puntero si se había soltado (por ejemplo tras mantener ALT)
   if (!isTouchDevice && !pointerLocked && lockAllowed()) requestLock();
@@ -1762,6 +1881,11 @@ cvs.addEventListener('mousedown', e => {
   if (e.button === 2) setZoom(true);
 });
 addEventListener('mouseup', e => {
+  if (e.button === 0 && S.fenceEditMode) {
+    if (edDrag.active && !edDrag.moved) handleFenceEditorClick(); // click corto = colocar
+    edDrag.active = false;
+    return;
+  }
   if (e.button === 0) S.firing = false;
   if (e.button === 2) setZoom(false);
 });
@@ -1769,7 +1893,15 @@ cvs.addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('wheel', e => {
   if (!S.playing || S.paused) return;
   if (S.fenceEditMode) {
-    cycleFenceRotation();
+    // Sobre el panel lateral o la barra flotante la rueda hace scroll del menú,
+    // no zoom de la vista.
+    let t = e.target;
+    while (t && t !== document.body) {
+      if (t.id === 'fenceEditorHUD' || t.id === 'feFab') return;
+      t = t.parentElement;
+    }
+    // ZOOM de la vista del editor (la rotación de la valla pasa a R / click der.)
+    editorCam.fovT = clamp(editorCam.fovT + (e.deltaY > 0 ? 4 : -4), 18, 72);
     return;
   }
   const d = e.deltaY > 0 ? 1 : -1;
@@ -1838,6 +1970,7 @@ addEventListener('keydown', e => {
     if (k === 'KeyR') { cycleFenceRotation(); return; }
     if (k === 'KeyH') { toggleFencePanel(); return; }
     if (k === 'Enter') { placeFenceAndStow(); return; }
+    if (k === 'KeyC') { edKeys.down = true; return; } // descender con la cámara del editor
     if (k === 'Digit1') { setFenceEditorModel('chain_link'); return; }
     if (k === 'Digit2') { setFenceEditorModel('tileable'); return; }
     if (k === 'Digit3') { setFenceEditorModel('concrete'); return; }
@@ -1860,6 +1993,7 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => {
   if (setMoveKey(e.code, false)) return;
+  if (e.code === 'KeyC') edKeys.down = false;
   if (e.code === 'AltLeft' || e.code === 'AltRight' || e.code === 'AltGraph') {
     if (altHeld) {
       altHeld = false;
@@ -2175,15 +2309,37 @@ $('setVoice').onchange = e => { S.settings.voice = e.target.value; audio.voiceOn
 // Inversión de la puntería (desactivada por defecto: ratón/dedo en dirección natural)
 if ($('setInvertX')) $('setInvertX').onchange = e => { S.settings.invertX = e.target.checked; const v = $('invertXVal'); if (v) v.textContent = S.settings.invertX ? 'SÍ' : 'NO'; saveSettings(); toast('INVERSIÓN HORIZONTAL: ' + (S.settings.invertX ? 'SÍ' : 'NO')); };
 if ($('setInvertY')) $('setInvertY').onchange = e => { S.settings.invertY = e.target.checked; const v = $('invertYVal'); if (v) v.textContent = S.settings.invertY ? 'SÍ' : 'NO'; saveSettings(); toast('INVERSIÓN VERTICAL: ' + (S.settings.invertY ? 'SÍ' : 'NO')); };
+// Efectos climáticos (tormenta, lluvia, rayos) y velocidad de las mareas
+if ($('setWeather')) $('setWeather').onchange = e => {
+  S.settings.weather = e.target.checked;
+  const v = $('weatherVal'); if (v) v.textContent = S.settings.weather ? 'SÍ' : 'NO';
+  saveSettings();
+  toast(S.settings.weather ? 'EFECTOS CLIMÁTICOS: ACTIVADOS' : 'EFECTOS CLIMÁTICOS: DESACTIVADOS');
+};
+if ($('setTide')) $('setTide').oninput = e => {
+  S.settings.tide = +e.target.value / 100;
+  if (world) world.tideSpeed = S.settings.tide;
+  const v = $('tideVal'); if (v) v.textContent = S.settings.tide.toFixed(1) + '×';
+  saveSettings();
+};
 document.addEventListener('visibilitychange', () => { if (document.hidden && S.playing && !S.paused) pauseGame(); });
 addEventListener('blur', () => {
   moveKeys.f = moveKeys.b = moveKeys.l = moveKeys.r = moveKeys.sprint = false;
   joy.active = false; joy.dx = joy.dy = joy.mag = 0; hideJoystick();
   S.firing = false;
+  edKeys.down = false;
+  edDrag.active = false;
 });
 
 // ---------------- clima ----------------
 function updateStorm(dt) {
+  S.lightning = Math.max(0, S.lightning - dt * 5);
+  if (S.settings.weather === false) {
+    // Efectos climáticos DESACTIVADOS en AJUSTES: cielo despejado permanente,
+    // sin lluvia, rayos ni truenos (la tormenta se disipa y no vuelve a formarse).
+    S.storm = Math.max(0, S.storm - dt * 0.6);
+    return;
+  }
   S.stormT -= dt;
   if (S.stormState === 'calm') {
     S.storm = Math.max(0, S.storm - dt * 0.2);
@@ -2212,7 +2368,6 @@ function updateStorm(dt) {
       radio('La tormenta amaina. Buen trabajo, operador.', 'Tormenta amainando.');
     }
   }
-  S.lightning = Math.max(0, S.lightning - dt * 5);
 }
 
 // ---------------- cámara / puntería 360° desde la torre elevada ----------------
@@ -2285,7 +2440,9 @@ function applyLook(dx, dy, touch) {
   if (!S.playing || S.paused || S.screen !== 'game') return;
   if (S.shopOpen) return;
   const w = WEAPONS[S.curW];
-  const zl = S.zoomed ? (S.curW === 0 ? rifleZoom() : w.zoom) : 1;
+  // En el editor, la sensibilidad de la cabeza acompaña al zoom de la rueda:
+  // con zoom puesto el giro es más fino, para colocar con precisión.
+  const zl = S.zoomed ? (S.curW === 0 ? rifleZoom() : w.zoom) : (S.fenceEditMode ? 62 / editorCam.fovT : 1);
   // Antes se dividía por el aumento completo (4.5×-9×) y apuntar con la mira puesta
   // iba lentísimo. Ahora el divisor es una potencia fraccionaria y se aplica la
   // sensibilidad de mira de AJUSTES: el zoom sigue siendo preciso pero ágil.
@@ -2302,7 +2459,9 @@ function applyLook(dx, dy, touch) {
 function updateAim(dt) {
   const w = WEAPONS[S.curW];
   const zl = S.zoomed ? (S.curW === 0 ? rifleZoom() : w.zoom) : 1;
-  const targetFov = 62 / zl;
+  // En el editor de vallado la RUEDA controla el zoom de la vista (FOV); fuera
+  // del editor el FOV lo marca el zoom telescópica del arma.
+  const targetFov = S.fenceEditMode ? editorCam.fovT : 62 / zl;
   camFov += (targetFov - camFov) * Math.min(1, dt * 10);
   camera.fov = camFov;
   camera.updateProjectionMatrix();
@@ -2371,6 +2530,14 @@ function setMoveKey(code, down) {
   }
 }
 function updatePlayer(dt) {
+  // En el editor de vallado el cuerpo del tirador NO se mueve: WASD/flechas
+  // pilotan la cámara libre del editor (la posición de la visión) con total
+  // libertad sobre el terreno construible.
+  if (S.fenceEditMode) {
+    updateEditorCam(dt);
+    player.moving = false;
+    return;
+  }
   let ix = (moveKeys.r ? 1 : 0) - (moveKeys.l ? 1 : 0);
   let iz = (moveKeys.b ? 1 : 0) - (moveKeys.f ? 1 : 0);
   if (joy.active && joy.mag > 0.14) { ix += joy.dx; iz += joy.dy; }
@@ -2518,7 +2685,9 @@ function animate() {
       fences: S.fences,
       placedFences: world.placedFences,
       fenceAlive: S.fences.some(f => f.alive) || (world.placedFences && world.placedFences.some(f => f.alive)),
-      playerPos: camera.position,
+      // En el editor de vallado la cámara vuela libre sobre el terreno: la IA
+      // debe seguir apuntando al CUERPO real del tirador, no a la cámara.
+      playerPos: S.fenceEditMode ? _ppTmp.set(player.x, player.y, player.z) : camera.position,
       playerGrounded: player.grounded,
       towerBase: TOWER_ASSAULT,
       extract: { x: 26, z: 2 },
@@ -2624,6 +2793,7 @@ if (typeof window !== 'undefined') {
     handleFenceEditorClick, computeFenceAimPoint,
     // movimiento a pie, editor apartable y perímetro de aparición
     player, moveKeys, joy, updatePlayer, resetPlayer, floorInfoFor,
+    editorCam, updateEditorCam, enterEditorCamera,
     setFencePanel, toggleFencePanel, placeFenceAndStow, cycleFenceTool,
     frontLineZ, pauseGame, resumeGame, saveGame, loadSave,
     EYE_HEIGHT, FLOOR_Y, TOWER_ASSAULT, TOWER_FLOORS,

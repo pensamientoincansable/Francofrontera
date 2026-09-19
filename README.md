@@ -25,15 +25,17 @@ Abre `http://localhost:8000`.
 | **Click izq.** | Disparar arma actual |
 | **Click der. / Espacio** | Activar mira telescópica (a **pantalla completa**, solo se ve el bisel en los bordes) |
 | **ESC / Botón QUITAR MIRA** | Salir de la mira telescópica |
-| **V** | Editor de vallado (abre/cierra) |
+| **V** | Editor de vallado (abre/cierra): la vista vuela a **≈6 m sobre el terreno construible** |
+| **W A S D (en el editor)** | **Mover la posición de la visión (el cuerpo)** con total libertad sobre el terreno · **Shift** sube · **C** baja |
+| **Arrastrar ratón (en el editor)** | Girar la vista (la cabeza) · **Rueda** = zoom de la vista |
 | **H** | **Apartar / mostrar el menú del vallado** (deja la pantalla despejada para colocar) |
-| **Espacio / Enter (en el editor)** | **COLOCAR** la valla en la retícula y apartar el menú automáticamente |
-| **R (en el editor)** | Rotar el tramo de valla |
+| **Espacio / Enter (en el editor)** | **COLOCAR** la valla exactamente en la retícula (colocación por tecla, máxima precisión) y apartar el menú automáticamente |
+| **R / Click der. (en el editor)** | Rotar el tramo de valla |
 | **1-4 (en el editor)** | Elegir modelo de valla · **E** construir · **X** demoler |
 | **E / C** | Desplegar ametralladora autónoma (hasta 4 en el perímetro) |
 | **L** | Fabricar lancha de defensa en nuestra playa (200 pts, oleada 2+, máx. 2) |
 | **1 / 2 / 3 / 4** | Seleccionar arma (Rifle · Pistola · Lanzagranadas · Misiles) |
-| **Rueda** | Cambiar de arma |
+| **Rueda** | Cambiar de arma (en el editor de vallado: zoom de la vista) |
 | **Q** | Alternar munición especial (Normal → Incendiaria → Eléctrica) |
 | **R** | Recargar arma |
 | **F** | Reparar las 3 vallas fronterizas (120 pts) |
@@ -65,6 +67,8 @@ Abre `http://localhost:8000`.
 - **Perímetro de aparición corregido:** la línea de spawn se calcula desde la **valla más alejada** de nuestro lado (las 3 capas base o las que hayas colocado tú). Nada —tampoco los jefes— puede aparecer ya entre nuestras vallas: los jefes entran 20-34 m más allá del frente y el resto 11-26 m.
 - **Mira a pantalla completa:** fuera el círculo negro pequeño. Ahora la vista ocupada por la mira es **toda la pantalla**, con un bisel fino, esquinas tácticas, viñeteado de lente, retícula centrada y telemetría. Apuntar con la mira puesta es **mucho más ágil**: el divisor de sensibilidad es una potencia fraccionaria del aumento (no el aumento completo) y hay un ajuste propio (`Sensibilidad con la mira puesta`, por defecto 1,2×).
 - **Editor de vallado fuera del centro:** en PC el panel queda **atracado a la izquierda**; en móvil, como **hoja inferior** que se abre ya apartada. La **barra flotante COLOCAR** vive en el borde derecho y aparta el menú en cuanto colocas, así la retícula nunca queda tapada.
+- **Cámara libre en el editor de vallado:** al pulsar **V** la vista vuela rápidamente a **≈6 m de altura sobre el terreno construible**. Desde ahí el **cuerpo** de la visión se mueve con total libertad (**WASD/flechas o joystick**; **Shift** sube y **C** baja), la **cabeza** gira arrastrando el ratón (o el dedo) y la **rueda** hace zoom. La colocación es **por tecla** (**ESPACIO/ENTER** en la retícula), para dejar cada valla exactamente donde quieres.
+- **Clima y mareas configurables:** en AJUSTES puedes **desactivar los efectos climáticos** (tormenta, lluvia y rayos) y regular la **velocidad de las mareas** de 0× (mar en calma) a 3× (marejada rápida).
 - **Sin circulitos amarillos:** retiradas las bombillas esféricas amarillas que flotaban sobre las vallas. Quedan el báculo oscuro y la luz que baña el terreno (la iluminación del perímetro no cambia).
 
 ## Novedades: Costa 25/75, Frente Paralelo y Lancha de Defensa
