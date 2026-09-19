@@ -2,7 +2,8 @@
 import * as THREE from 'three';
 import { AudioEngine } from './audio.js';
 import { FX } from './fx.js';
-import { World, SNIPER_EYE, PARAPET_TOP, SHORE_X, FENCE_ZS, FENCE_X0, FENCE_X1, FENCE_LABELS, BUILD_X0, BUILD_X1, BUILD_Z0, BUILD_Z1 } from './world.js';
+import { World, SNIPER_EYE, PARAPET_TOP, SHORE_X, FENCE_ZS, FENCE_X0, FENCE_X1, FENCE_LABELS, BUILD_X0, BUILD_X1, BUILD_Z0, BUILD_Z1,
+         EYE_HEIGHT, FLOOR_Y, TOWER_ASSAULT, TOWER_FLOORS } from './world.js';
 import { Entities, ZTYPES, BOAT_COST, BOAT_MAX } from './entities.js';
 import { FENCE_CATALOG, ENEMY_CATALOG, models } from './models.js';
 
@@ -42,6 +43,7 @@ const S = {
   strikeCd: 0, strikeUnlocked: false,
   intermission: false, interT: 0,
   fenceEditMode: false,
+  fencePanelOpen: true,
   selectedFenceModel: 'chain_link',
   fenceRotationAngle: 0,
   fenceTool: 'build',
@@ -52,7 +54,9 @@ const S = {
   objectives: [], pendingSpawns: [], spawnT: 0,
   _lastTurretAlert: 0, _lastSiegeAlert: 0,
   // invertX/invertY: por defecto NO se invierte ninguna dirección (ratón normal).
-  settings: { sens: 1, master: 80, music: 55, sfx: 90, quality: 'high', voice: 'on', invertX: false, invertY: false },
+  // aimSens: multiplicador de sensibilidad SOLO con la mira puesta (antes el zoom
+  // dividía la sensibilidad por 4.5×-9× y apuntar se volvía lentísimo).
+  settings: { sens: 1, aimSens: 1.2, master: 80, music: 55, sfx: 90, quality: 'high', voice: 'on', invertX: false, invertY: false },
 };
 try {
   const b = JSON.parse(localStorage.getItem('frtd_best_v1') || '0'); S.best = b | 0;
@@ -63,8 +67,16 @@ function saveGame() {
   try {
     localStorage.setItem('frtd_save_v1', JSON.stringify({
       wave: S.wave, score: S.score, kills: S.kills, headshots: S.headshots, shots: S.shots, up: S.up,
+      // El vallado que coloque el jugador ES parte de la partida guardada: se
+      // restaura al CONTINUAR y solo desaparece al empezar de cero o al demolerlo
+      // desde el editor de vallado.
+      built: (typeof world !== 'undefined' && world && world.serializeCustomFences) ? world.serializeCustomFences() : [],
     }));
   } catch (e) {}
+}
+function savedFenceCount() {
+  const sv = loadSave();
+  return (sv && Array.isArray(sv.built)) ? sv.built.length : 0;
 }
 function loadSave() { try { return JSON.parse(localStorage.getItem('frtd_save_v1') || 'null'); } catch (e) { return null; } }
 function clearSave() { try { localStorage.removeItem('frtd_save_v1'); } catch (e) {} }
@@ -217,10 +229,24 @@ const ent = new Entities(scene, fx, {
     if (F.hp >= F.max * 0.35) F._warned = false;
   },
   stoneThrow() { if (S.playing && !S.paused && Math.random() < 0.5) audio.stoneThrow(); },
-  stoneHit(p, kind) {
+  stoneHit(p, kind, amount) {
     if (!S.playing || S.paused) return;
     audio.stoneHit();
-    if (kind === 'player') shake(0.06);
+    if (kind !== 'player') return;
+    // El tirador ahora puede estar a pie de suelo en cualquier punto del sector o
+    // en otra planta: la piedra solo hiere si le cae realmente cerca.
+    const d = Math.hypot(p.x - player.x, p.z - player.z);
+    const dy = Math.abs((p.y || 0) - player.feet);
+    if (d < 3.6 && dy < 5) {
+      S.hp = Math.max(0, S.hp - (amount || 3));
+      S.lastHurt = S.time;
+      S.trauma = Math.min(1, S.trauma + 0.18);
+      audio.hurt();
+      if (S.hp <= 0) gameOver(false);
+      updateHUD();
+    } else {
+      shake(0.04);
+    }
   },
   boatDeploy(z) {
     if (!S.playing || S.paused) return;
@@ -986,14 +1012,36 @@ function repairFence() {
   updateHUD();
 }
 
+// ---------------- línea de frente (perímetro de aparición) ----------------
+// Devuelve la Z de la valla MÁS ALEJADA de nuestro lado: las 3 capas base y los
+// tramos colocados por el jugador en el editor. Los asaltantes y los jefes aparecen
+// siempre al norte de esta línea, así nunca se materializan dentro de nuestra mitad.
+function frontLineZ() {
+  let z = FENCE_ZS[0];
+  for (const f of S.fences) if (f.alive) z = Math.min(z, f.z);
+  if (world && world.placedFences) {
+    for (const pf of world.placedFences) {
+      if (!pf.alive) continue;
+      z = Math.min(z, pf.z);
+    }
+  }
+  return Math.min(z, FENCE_ZS[0]);
+}
+
 // ---------------- modo editor de vallado ----------------
 function openFenceEditor() {
   if (!S.playing || S.paused) return;
   S.fenceEditMode = true;
+  document.body.classList.add('fe-editing');   // la interfaz se recoloca (ver CSS)
   setZoom(false); // Quitar mira telescópica en el editor
   releaseLock();  // en el editor el cursor debe verse (hay botones que tocar)
   const fe = $('fenceEditorHUD');
   if (fe) fe.classList.remove('hidden');
+  const fab = $('feFab');
+  if (fab) fab.classList.remove('hidden');
+  // En móvil el panel se abre ya apartado (solo la barra flotante) para no tapar la
+  // retícula; en PC queda atracado a la izquierda, fuera del centro de la pantalla.
+  setFencePanel(!isTouchDevice);
   if (world.setEditorOverlay) world.setEditorOverlay(true); // zona construible + retícula
   updateCursorState();
   updateFenceEditorUI();
@@ -1003,8 +1051,12 @@ function openFenceEditor() {
 
 function closeFenceEditor() {
   S.fenceEditMode = false;
+  document.body.classList.remove('fe-panel-open');
+  document.body.classList.remove('fe-editing');
   const fe = $('fenceEditorHUD');
   if (fe) fe.classList.add('hidden');
+  const fab = $('feFab');
+  if (fab) fab.classList.add('hidden');
   if (world.clearHologram) world.clearHologram();
   if (world.setEditorOverlay) world.setEditorOverlay(false);
   updateCursorState();
@@ -1015,6 +1067,25 @@ function closeFenceEditor() {
 function toggleFenceEditor() {
   if (S.fenceEditMode) closeFenceEditor();
   else openFenceEditor();
+}
+
+// Aparta / muestra el panel del editor. Mientras está apartado solo queda la barra
+// flotante (COLOCAR · ROTAR · MODO · MENÚ · SALIR), que no tapa el centro de la
+// pantalla ni la retícula: se puede colocar el vallado con la vista limpia.
+function setFencePanel(show) {
+  S.fencePanelOpen = !!show;
+  const fe = $('fenceEditorHUD');
+  if (fe) fe.classList.toggle('stowed', !show);
+  // la clase del body re-coloca la barra flotante para que nunca tape el panel
+  document.body.classList.toggle('fe-panel-open', !!show);
+  const st = $('feStowBtn');
+  if (st) st.textContent = show ? '◀ APARTAR MENÚ' : '▶ MOSTRAR MENÚ';
+  const fb = $('feFabPanel');
+  if (fb) fb.classList.toggle('active', show);
+}
+function toggleFencePanel() {
+  setFencePanel(!S.fencePanelOpen);
+  try { audio.click(); } catch (e) {}
 }
 
 // Punto EXACTO de colocación: intersección del rayo del centro de la pantalla
@@ -1083,6 +1154,7 @@ function setFenceTool(tool) {
   if (bBuild) bBuild.classList.toggle('active', tool === 'build');
   if (bDemo) bDemo.classList.toggle('active', tool === 'demolish');
   if (bRep) bRep.classList.toggle('active', tool === 'repair');
+  updateFenceEditorUI();   // la barra flotante refleja la herramienta al instante
   audio.click();
 }
 
@@ -1090,6 +1162,26 @@ function updateFenceEditorUI() {
   const sc = $('feScore'), tm = $('feTimer');
   if (sc) sc.textContent = S.score;
   if (tm) tm.textContent = S.intermission ? Math.max(0, Math.ceil(S.interT)) + 's' : 'EN COMBATE';
+  // barra flotante: estado compacto + herramienta activa
+  const fs = $('feFabScore');
+  if (fs) fs.textContent = S.score + ' PTS';
+  const ft = $('feFabToolName');
+  if (ft) {
+    const names = { build: 'CONSTRUIR', demolish: 'DEMOLER', repair: 'REPARAR' };
+    ft.textContent = names[S.fenceTool] || 'CONSTRUIR';
+  }
+  const fm = $('feFabModel');
+  if (fm) {
+    const cfg = FENCE_CATALOG[S.selectedFenceModel] || FENCE_CATALOG.chain_link;
+    fm.textContent = cfg.name.toUpperCase() + ' · ' + cfg.cost + ' PTS';
+  }
+  const fc = $('feFabCount');
+  if (fc && world.serializeCustomFences) fc.textContent = world.serializeCustomFences().length + ' TRAMOS';
+  const fp = $('fePlaceFloat');
+  if (fp) {
+    const cfg = FENCE_CATALOG[S.selectedFenceModel] || FENCE_CATALOG.chain_link;
+    fp.disabled = (S.fenceTool === 'build' && S.score < cfg.cost);
+  }
   const pb = $('fePlaceBtn');
   if (pb) {
     if (S.fenceTool === 'build') {
@@ -1101,8 +1193,21 @@ function updateFenceEditorUI() {
   }
 }
 
+// COLOCAR (y apartar el menú): botón grande flotante, pensado para el pulgar.
+// Devuelve true solo si la acción tuvo efecto (valla colocada / demolida / reparada).
+function placeFenceAndStow() {
+  const ok = handleFenceEditorClick();
+  if (ok) setFencePanel(false);
+  return ok;
+}
+function cycleFenceTool() {
+  const order = ['build', 'demolish', 'repair'];
+  const i = order.indexOf(S.fenceTool);
+  setFenceTool(order[(i + 1) % order.length]);
+}
+
 function handleFenceEditorClick() {
-  if (!S.fenceEditMode) return;
+  if (!S.fenceEditMode) return false;
   const p = computeFenceAimPoint(new THREE.Vector3());
 
   // Límites de la zona construible: todo el corredor terrestre por donde
@@ -1111,7 +1216,7 @@ function handleFenceEditorClick() {
   if (!inBounds) {
     audio.denied();
     toast('FUERA DE LA ZONA DE CONSTRUCCIÓN');
-    return;
+    return false;
   }
 
   if (S.fenceTool === 'build') {
@@ -1119,23 +1224,27 @@ function handleFenceEditorClick() {
     if (S.score < cfg.cost) {
       audio.denied();
       toast(`PUNTOS INSUFICIENTES (SE REQUIEREN ${cfg.cost} PTS)`);
-      return;
+      return false;
     }
     if (!world.isFenceSpotFree(p.x, p.z, S.fenceRotationAngle, cfg.width, cfg.depth)) {
       audio.denied();
       toast('ZONA OCUPADA: DESPLAZA LA RETÍCULA');
-      return;
+      return false;
     }
     const added = world.addPlacedFence(S.selectedFenceModel, p.x, p.z, S.fenceRotationAngle, cfg.hp, cfg.hp);
     if (!added) {
       audio.denied();
       toast('MODELO DE VALLA AÚN EN CARGA · INTENTA DE NUEVO');
-      return;
+      return false;
     }
     S.score -= cfg.cost; // los puntos solo se descuentan si la valla se colocó
     audio.buy();
     fx.sparkHit(p.clone().setY(1.0));
     toast(`VALLA COLOCADA // ${cfg.name.toUpperCase()} (-${cfg.cost} PTS)`);
+    saveGame(); // el vallado colocado queda guardado con la partida
+    updateHUD();
+    updateFenceEditorUI();
+    return true;
   } else if (S.fenceTool === 'demolish') {
     // Buscar la valla personalizada más cercana (las 3 capas base no se demuelen)
     let best = null, bestD = 4.0;
@@ -1152,15 +1261,25 @@ function handleFenceEditorClick() {
       audio.repair();
       fx.dirtBurst(p);
       toast(`VALLA DEMOLIDA // +${refund} PTS RECUPERADOS`);
+      saveGame(); // se retira del guardado solo al demolerla desde el editor
+      updateHUD();
+      updateFenceEditorUI();
+      return true;
     } else {
       toast('SIN VALLA PERSONALIZADA EN ESE PUNTO');
       audio.denied();
+      return false;
     }
   } else if (S.fenceTool === 'repair') {
+    const before = fenceAvg();
     repairFence();
+    updateHUD();
+    updateFenceEditorUI();
+    return fenceAvg() !== before || !fencesAllFull();
   }
   updateHUD();
   updateFenceEditorUI();
+  return false;
 }
 function callStrike() {
   if (!S.playing || S.paused || !S.strikeUnlocked || S.strikeCd > 0) return;
@@ -1188,6 +1307,7 @@ function callStrike() {
 
 // ---------------- HUD MINIMALISTA ----------------
 function updateHUD() {
+  updateFloorHUD();   // planta actual + aviso de estar a pie de suelo
   const sv = $('scoreVal'), bv = $('bestVal');
   if (sv) sv.textContent = S.score;
   if (bv) bv.textContent = S.best;
@@ -1297,6 +1417,7 @@ function updateHUD() {
 }
 
 function renderSlots() {
+  renderTouchWeapons();
   const el = $('slots');
   if (!el) return;
   el.innerHTML = '';
@@ -1376,6 +1497,10 @@ function buyUpgrade(u) {
 // ---------------- flujo de juego ----------------
 function resetRun() {
   try { ent.clearAll(); } catch(e){ console.warn('clearAll fallo', e); ent.list=[]; ent.civs=[]; ent.soldiers=[]; ent.turrets=[]; }
+  // Partida nueva: se retira TODO el vallado personalizado colocado en la partida
+  // anterior (solo vuelve a aparecer si se CONTINÚA una partida guardada).
+  try { world.clearCustomFences(); } catch(e){ console.warn('clearCustomFences fallo', e); }
+  resetPlayer();
   for (const p of projectiles) { try{ scene.remove(p.mesh); }catch(e){} }
   projectiles.length = 0;
   // Reset completo de estado, incluyendo tokens de entrada y alertas
@@ -1418,6 +1543,13 @@ function startGame(fresh) {
         if(sv.up && typeof sv.up === 'object') Object.assign(S.up, sv.up);
         resetFences();
         if (S.wave >= 3) S.strikeUnlocked = true;
+        // Restaurar el vallado que el jugador había colocado y guardado
+        if (Array.isArray(sv.built) && sv.built.length) {
+          try {
+            world.restoreCustomFences(sv.built);
+            toast('VALLADO GUARDADO RESTAURADO · ' + sv.built.length + ' TRAMOS');
+          } catch(e){ console.warn('restoreCustomFences fallo', e); }
+        }
       }
     }
     try{ ent.spawnSoldier(-7, 3, 'VEGA'); }catch(e){ console.warn('spawnSoldier fallo', e); }
@@ -1489,24 +1621,37 @@ function updateMenuBest() {
   const sv = loadSave();
   if (bc) {
     bc.disabled = !sv;
-    bc.textContent = sv ? `CONTINUAR · OLEADA ${fmt(sv.wave)} · ${sv.score} PTS` : 'CONTINUAR';
+    if (sv) {
+      const n = Array.isArray(sv.built) ? sv.built.length : 0;
+      bc.textContent = `CONTINUAR · OLEADA ${fmt(sv.wave)} · ${sv.score} PTS` + (n ? ` · ${n} VALLAS` : '');
+    } else bc.textContent = 'CONTINUAR';
   }
 }
 function pauseGame() {
   if (!S.playing || S.screen !== 'game') return;
   if (S.shopOpen) { closeShop(); return; }
+  if (S.paused) return;
   S.paused = true;
+  S.firing = false;
+  // Se suelta toda la entrada de movimiento para que nada siga avanzando al reanudar
+  moveKeys.f = moveKeys.b = moveKeys.l = moveKeys.r = moveKeys.sprint = false;
+  joy.active = false; joy.dx = joy.dy = joy.mag = 0; hideJoystick();
   setZoom(false);   // la mira no debe quedarse encima del menú de pausa
   releaseLock();    // el menú de pausa necesita el cursor visible
   updateCursorState();
-  audio.suspend();
+  audio.suspend();  // congela música y efectos (AudioContext suspendido)
   try { speechSynthesis.cancel(); } catch (e) {}
   const pm = $('pauseMenu');
   if (pm) pm.classList.remove('hidden');
+  const pt = $('pauseHint');
+  if (pt) pt.textContent = `PARTIDA CONGELADA · OLEADA ${fmt(S.wave)} · ${S.score} PTS`;
 }
 function resumeGame() {
   if (!S.playing) return;
   S.paused = false; S.shopOpen = false;
+  // el reloj no debe acumular el tiempo en pausa (ya se recorta a 0.05 s, pero se
+  // descarta el delta pendiente para que no haya un salto al reanudar)
+  try { clock.getDelta(); } catch (e) {}
   audio.resume();
   for (const id of ['pauseMenu', 'shopMenu', 'settingsMenu']) {
     const el = $(id); if (el) el.classList.add('hidden');
@@ -1532,6 +1677,9 @@ function applySettingsToUI() {
   const ss = $('setSens'), sv = $('sensVal');
   if (ss) ss.value = Math.round(S.settings.sens * 100);
   if (sv) sv.textContent = S.settings.sens.toFixed(1);
+  const sa = $('setAimSens'), sav = $('aimSensVal');
+  if (sa) sa.value = Math.round((S.settings.aimSens || 1.2) * 100);
+  if (sav) sav.textContent = (S.settings.aimSens || 1.2).toFixed(1) + '×';
   const sm = $('setMaster'), mv = $('masterVal');
   if (sm) sm.value = S.settings.master; if (mv) mv.textContent = S.settings.master;
   const smu = $('setMusic'), muv = $('musicVal');
@@ -1581,7 +1729,16 @@ function setZoom(v) {
 
 // ---------------- entrada adaptativa (PC y Android) ----------------
 const cvs = renderer.domElement;
-const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+// Detección de dispositivo táctil. Un portátil con pantalla táctil tiene
+// 'ontouchstart' y maxTouchPoints > 0 pero su puntero PRINCIPAL es el ratón: debe
+// recibir la interfaz de PC. Solo los dispositivos de puntero grueso (móvil,
+// tableta) entran en el modo táctil; si aun así se toca la pantalla, el primer
+// toque añade body.is-touch y aparecen los controles táctiles igualmente.
+const _mq = (typeof matchMedia === 'function') ? matchMedia.bind(window) : null;
+const _coarse = !!(_mq && _mq('(pointer: coarse)').matches);
+const _fine = !!(_mq && _mq('(pointer: fine)').matches);
+const _touchCapable = ('ontouchstart' in window) || ((navigator.maxTouchPoints | 0) > 0);
+const isTouchDevice = _coarse || (_touchCapable && !_fine);
 if (isTouchDevice) document.body.classList.add('is-touch');
 
 // Ratón en PC
@@ -1634,9 +1791,20 @@ addEventListener('keydown', e => {
     }
     return;
   }
+  const k0 = e.code;
+  // Movimiento a pie (WASD / flechas / Shift para correr): se registra SIEMPRE,
+  // incluso con repeticiones, para no perder el estado de la tecla.
+  if (setMoveKey(k0, true)) {
+    e.preventDefault();
+    return;
+  }
   if (e.repeat) return;
-  const k = e.code;
-  if (k === 'Space') { e.preventDefault(); setZoom(true); }
+  const k = k0;
+  if (k === 'Space') {
+    e.preventDefault();
+    if (S.fenceEditMode) { placeFenceAndStow(); return; }
+    setZoom(true);
+  }
   if (S.screen === 'menu') {
     if (k === 'Enter') startGame(true);
     return;
@@ -1668,6 +1836,8 @@ addEventListener('keydown', e => {
   }
   if (S.fenceEditMode) {
     if (k === 'KeyR') { cycleFenceRotation(); return; }
+    if (k === 'KeyH') { toggleFencePanel(); return; }
+    if (k === 'Enter') { placeFenceAndStow(); return; }
     if (k === 'Digit1') { setFenceEditorModel('chain_link'); return; }
     if (k === 'Digit2') { setFenceEditorModel('tileable'); return; }
     if (k === 'Digit3') { setFenceEditorModel('concrete'); return; }
@@ -1689,6 +1859,7 @@ addEventListener('keydown', e => {
   else if (k === 'Enter' && S.intermission) startWave(S.wave + 1);
 });
 addEventListener('keyup', e => {
+  if (setMoveKey(e.code, false)) return;
   if (e.code === 'AltLeft' || e.code === 'AltRight' || e.code === 'AltGraph') {
     if (altHeld) {
       altHeld = false;
@@ -1700,60 +1871,138 @@ addEventListener('keyup', e => {
   if (e.code === 'Space') setZoom(false);
 });
 
-// Controles táctiles adaptativos para Android - gestión robusta de tokens táctiles
-let touchStartX = 0, touchStartY = 0, isTouchAiming = false;
-let activeTouchId = null; // token del dedo que controla la puntería
-let touchTapX = 0, touchTapY = 0, touchTapT = 0, touchMoved = false;
-const aimPad = $('touchAimPad');
-if (aimPad) {
-  aimPad.addEventListener('touchstart', e => {
-    e.preventDefault();
-    // Si ya hay un token activo, ignorar nuevos dedos para no perder el control
-    if(activeTouchId !== null) return;
-    const t = e.changedTouches[0];
-    if(!t) return;
-    activeTouchId = t.identifier;
-    touchStartX = t.clientX; touchStartY = t.clientY;
-    touchTapX = t.clientX; touchTapY = t.clientY; touchTapT = performance.now();
-    touchMoved = false;
-    isTouchAiming = true;
-  }, { passive: false });
+// ---------------- ENTRADA TÁCTIL UNIFICADA (móvil) ----------------
+// Un único gestor a nivel de ventana decide, para cada dedo nuevo, si cae en la
+// zona de movimiento (mitad izquierda → joystick) o en la de puntería (resto de
+// la pantalla libre). Las capas #touchAimPad y #moveZone son solo visuales
+// (pointer-events:none), así que nada bloquea el ratón en PC ni depende del
+// z-index: los toques que empiezan sobre un botón o un menú se ignoran aquí.
+const aimTouch = { id: null, x: 0, y: 0, tapX: 0, tapY: 0, tapT: 0, moved: false };
+const MOVE_ZONE_FRAC = 0.44;   // mitad izquierda = zona de movimiento
+const JOY_R = 58;              // radio útil del joystick en px
 
-  aimPad.addEventListener('touchmove', e => {
-    e.preventDefault();
-    if (!isTouchAiming || activeTouchId === null) return;
-    // Buscar el touch con el token activo
-    let found = null;
-    for(let i=0;i<e.touches.length;i++){
-      if(e.touches[i].identifier === activeTouchId){ found = e.touches[i]; break; }
+function showJoystick() { const b = $('joyBase'); if (b) b.classList.add('show'); }
+function hideJoystick() {
+  const b = $('joyBase'); if (b) b.classList.remove('show');
+  const k = $('joyKnob'); if (k) k.style.transform = 'translate(-50%,-50%)';
+}
+function positionJoy(cx, cy, dx, dy) {
+  const b = $('joyBase');
+  if (b) { b.style.left = cx + 'px'; b.style.top = cy + 'px'; }
+  const k = $('joyKnob');
+  if (k) k.style.transform = `translate(calc(-50% + ${dx.toFixed(1)}px), calc(-50% + ${dy.toFixed(1)}px))`;
+}
+
+const UI_TOUCH_SELECTOR = 'button, .tbtn, .wbtn, .slot, .ib-btn, .iconbtn, .fe-card,' +
+  ' .fe-btn-rot, .fe-btn-tool, .fe-btn-place, .fe-btn-time, .fe-fab-btn, .fe-fab-place,' +
+  ' .action, .screen, #fenceEditorHUD, #feFab, #interBar';
+
+function touchStartsOnUI(t) {
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  if (!el) return true;
+  if (el === cvs || el === document.body || el.id === 'hud' || el.id === 'world' ||
+      el.id === 'touchAimPad' || el.id === 'moveZone') return false;
+  return !!(el.closest && el.closest(UI_TOUCH_SELECTOR));
+}
+
+function touchPlayActive() {
+  return S.playing && !S.paused && S.screen === 'game' && !modalsOpen();
+}
+
+addEventListener('touchstart', e => {
+  // Defensa: algún WebView/herramienta de accesibilidad puede disparar un evento
+  // táctil sintético sin changedTouches; sin esta guarda el bucle petaría.
+  if (!e || !e.changedTouches) return;
+  if (!document.body.classList.contains('is-touch')) document.body.classList.add('is-touch');
+  if (!touchPlayActive()) return;
+  for (const t of e.changedTouches) {
+    if (touchStartsOnUI(t)) continue;
+    const inMoveZone = t.clientX < innerWidth * MOVE_ZONE_FRAC;
+    if (inMoveZone && joy.id === null) {
+      // el joystick aparece justo donde apoyas el pulgar
+      joy.id = t.identifier; joy.active = true;
+      joy.ox = t.clientX; joy.oy = t.clientY;
+      joy.dx = 0; joy.dy = 0; joy.mag = 0;
+      positionJoy(joy.ox, joy.oy, 0, 0);
+      showJoystick();
+    } else if (aimTouch.id === null) {
+      // resto de la pantalla (o la izquierda si el joystick ya está en uso): puntería
+      aimTouch.id = t.identifier;
+      aimTouch.x = t.clientX; aimTouch.y = t.clientY;
+      aimTouch.tapX = t.clientX; aimTouch.tapY = t.clientY;
+      aimTouch.tapT = performance.now(); aimTouch.moved = false;
+    } else continue;
+    if (e.cancelable) e.preventDefault();
+  }
+}, { passive: false });
+
+addEventListener('touchmove', e => {
+  if (!e || !e.changedTouches) return;
+  if (!touchPlayActive()) return;
+  for (const t of e.changedTouches) {
+    if (joy.id !== null && t.identifier === joy.id) {
+      let dx = t.clientX - joy.ox, dy = t.clientY - joy.oy;
+      const d = Math.hypot(dx, dy);
+      if (d > JOY_R) { dx = dx / d * JOY_R; dy = dy / d * JOY_R; }
+      joy.dx = dx / JOY_R; joy.dy = dy / JOY_R; joy.mag = Math.min(1, d / JOY_R);
+      positionJoy(joy.ox, joy.oy, dx, dy);
+      if (e.cancelable) e.preventDefault();
+    } else if (aimTouch.id !== null && t.identifier === aimTouch.id) {
+      const dx = t.clientX - aimTouch.x, dy = t.clientY - aimTouch.y;
+      // distinguir TOC corto (colocar valla) de arrastre (girar la vista)
+      if (Math.hypot(t.clientX - aimTouch.tapX, t.clientY - aimTouch.tapY) > 12) aimTouch.moved = true;
+      aimTouch.x = t.clientX; aimTouch.y = t.clientY;
+      applyLook(dx, dy, true);
+      if (e.cancelable) e.preventDefault();
     }
-    if(!found) return;
-    const dx = found.clientX - touchStartX;
-    const dy = found.clientY - touchStartY;
-    // Distinguir TOC (colocar valla en modo edición) de arrastre (mover la vista)
-    if (Math.hypot(found.clientX - touchTapX, found.clientY - touchTapY) > 12) touchMoved = true;
-    touchStartX = found.clientX; touchStartY = found.clientY;
-    // Puntería RELATIVA 360° con la misma convención que el ratón (derecha =
-    // mirar a la derecha, arriba = subir), con factor de sensibilidad táctil.
-    applyLook(dx, dy, true);
-  }, { passive: false });
+  }
+}, { passive: false });
 
-  const endTouch = (e)=>{
-    if(activeTouchId===null) { isTouchAiming=false; return; }
-    for(let i=0;i<e.changedTouches.length;i++){
-      if(e.changedTouches[i].identifier === activeTouchId){
-        // TOC corto en modo edición de vallado = colocar en la retícula
-        if (S.fenceEditMode && !touchMoved && (performance.now() - touchTapT) < 350) {
-          handleFenceEditorClick();
-        }
-        activeTouchId = null;
-        isTouchAiming = false;
-        break;
+function endTouches(e) {
+  if (!e || !e.changedTouches) return;
+  for (const t of e.changedTouches) {
+    if (joy.id !== null && t.identifier === joy.id) {
+      joy.id = null; joy.active = false; joy.dx = 0; joy.dy = 0; joy.mag = 0;
+      hideJoystick();          // el joystick desaparece al soltar
+    } else if (aimTouch.id !== null && t.identifier === aimTouch.id) {
+      if (S.fenceEditMode && !aimTouch.moved && (performance.now() - aimTouch.tapT) < 350) {
+        handleFenceEditorClick();
       }
+      aimTouch.id = null;
     }
-  };
-  aimPad.addEventListener('touchend', endTouch, { passive: true });
-  aimPad.addEventListener('touchcancel', endTouch, { passive: true });
+  }
+}
+addEventListener('touchend', endTouches, { passive: true });
+addEventListener('touchcancel', endTouches, { passive: true });
+
+// ---------------- SELECTOR DE ARMA TÁCTIL (botones grandes, no se colapsan) ----------------
+// Sustituye a las ranuras diminutas del HUD: 4 botones de 46 px en una rejilla 2×2
+// junto al botón de fuego, siempre visibles y separados para el pulgar.
+function renderTouchWeapons() {
+  const bar = $('touchWeaponBar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  WEAPONS.forEach((w, i) => {
+    const locked = S.wave < w.unlock;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'wbtn' + (i === S.curW ? ' sel' : '') + (locked ? ' locked' : '');
+    b.setAttribute('aria-label', w.name);
+    b.innerHTML = '<i>' + (locked ? '🔒' : w.icon) + '</i><small>' + (i + 1) + '</small>';
+    let touched = false;
+    const fn = (e) => {
+      if (e && e.preventDefault) e.preventDefault();
+      if (e && e.stopPropagation) e.stopPropagation();
+      touched = true;
+      setTimeout(() => { touched = false; }, 400);
+      if (!S.playing || S.paused) return;
+      if (locked) { try { audio.denied(); } catch (err) {} toast('ARMA BLOQUEADA · OLEADA ' + w.unlock); return; }
+      switchWeapon(i);
+    };
+    b.addEventListener('touchstart', fn, { passive: false });
+    b.addEventListener('click', e => { if (touched) { e.preventDefault(); return; } fn(e); });
+    bar.appendChild(b);
+  });
 }
 
 // Botones táctiles específicos - manejo robusto de tokens táctiles y fallback a click
@@ -1858,6 +2107,15 @@ bindBtn('btnEditFence', () => openFenceEditor());
 bindBtn('btnExtendTime', () => extendIntermissionTime(30, 50));
 bindBtn('feExtendTime', () => extendIntermissionTime(30, 50));
 bindBtn('btnCloseFenceEditor', () => closeFenceEditor());
+// Barra flotante del editor: COLOCAR (y apartar el menú), ROTAR, MODO, MENÚ, SALIR
+bindBtn('fePlaceFloat', () => placeFenceAndStow());
+bindBtn('feFabRot', () => cycleFenceRotation());
+bindBtn('feFabTool', () => cycleFenceTool());
+bindBtn('feFabPanel', () => toggleFencePanel());
+bindBtn('feFabExit', () => closeFenceEditor());
+bindBtn('feStowBtn', () => toggleFencePanel());
+// Pausa también en grande para el pulgar (además del icono de la barra superior)
+bindBtn('btnTouchPause', () => { S.paused ? resumeGame() : pauseGame(); });
 
 // Tarjetas del catálogo de vallas: se identifican por data-type (las tarjetas de
 // index.html NO tienen id; el antiguo vínculo por id era la causa del "no hace nada").
@@ -1886,7 +2144,7 @@ document.querySelectorAll('#feRotBtns .fe-btn-rot').forEach(btn => {
   }, { passive: false });
 });
 
-// Botón COLOCAR del editor (visible también en móvil, con botón grande)
+// Botón COLOCAR del panel del editor
 bindBtn('fePlaceBtn', () => handleFenceEditorClick());
 
 bindBtn('feToolBuild', () => setFenceTool('build'));
@@ -1904,6 +2162,11 @@ bindBtn('btnMute', () => {
 
 // Sliders
 $('setSens').oninput = e => { S.settings.sens = e.target.value / 100; $('sensVal').textContent = S.settings.sens.toFixed(1); saveSettings(); };
+if ($('setAimSens')) $('setAimSens').oninput = e => {
+  S.settings.aimSens = e.target.value / 100;
+  const v = $('aimSensVal'); if (v) v.textContent = S.settings.aimSens.toFixed(1) + '×';
+  saveSettings();
+};
 $('setMaster').oninput = e => { S.settings.master = +e.target.value; $('masterVal').textContent = S.settings.master; audio.setVol('master', S.settings.master / 100); saveSettings(); };
 $('setMusic').oninput = e => { S.settings.music = +e.target.value; $('musicVal').textContent = S.settings.music; audio.setVol('music', S.settings.music / 100); saveSettings(); };
 $('setSfx').oninput = e => { S.settings.sfx = +e.target.value; $('sfxVal').textContent = S.settings.sfx; audio.setVol('sfx', S.settings.sfx / 100); saveSettings(); };
@@ -1913,6 +2176,11 @@ $('setVoice').onchange = e => { S.settings.voice = e.target.value; audio.voiceOn
 if ($('setInvertX')) $('setInvertX').onchange = e => { S.settings.invertX = e.target.checked; const v = $('invertXVal'); if (v) v.textContent = S.settings.invertX ? 'SÍ' : 'NO'; saveSettings(); toast('INVERSIÓN HORIZONTAL: ' + (S.settings.invertX ? 'SÍ' : 'NO')); };
 if ($('setInvertY')) $('setInvertY').onchange = e => { S.settings.invertY = e.target.checked; const v = $('invertYVal'); if (v) v.textContent = S.settings.invertY ? 'SÍ' : 'NO'; saveSettings(); toast('INVERSIÓN VERTICAL: ' + (S.settings.invertY ? 'SÍ' : 'NO')); };
 document.addEventListener('visibilitychange', () => { if (document.hidden && S.playing && !S.paused) pauseGame(); });
+addEventListener('blur', () => {
+  moveKeys.f = moveKeys.b = moveKeys.l = moveKeys.r = moveKeys.sprint = false;
+  joy.active = false; joy.dx = joy.dy = joy.mag = 0; hideJoystick();
+  S.firing = false;
+});
 
 // ---------------- clima ----------------
 function updateStorm(dt) {
@@ -1982,14 +2250,25 @@ function requestLock() {
     if (p && typeof p.catch === 'function') p.catch(() => {});
   } catch (e) { /* el navegador puede denegar el lock; el cursor visible sigue funcionando */ }
 }
+let unlockIntentional = false;
 function releaseLock() {
+  unlockIntentional = true;
   if (pointerLocked && document.exitPointerLock) {
     try { document.exitPointerLock(); } catch (e) {}
   }
 }
 document.addEventListener('pointerlockchange', () => {
+  const was = pointerLocked;
   pointerLocked = (document.pointerLockElement === cvs);
   updateCursorState();
+  // ESC libera el bloqueo del puntero y el navegador se come la tecla (no llega al
+  // juego). Si el bloqueo se pierde en pleno combate sin que nadie lo pida, se
+  // pausa la partida: así "pausa" siempre detiene el juego.
+  if (was && !pointerLocked && !unlockIntentional && S.playing && !S.paused
+      && S.screen === 'game' && !modalsOpen() && !S.fenceEditMode) {
+    pauseGame();
+  }
+  unlockIntentional = false;
 });
 document.addEventListener('pointerlockerror', () => {
   pointerLocked = false;
@@ -2007,7 +2286,12 @@ function applyLook(dx, dy, touch) {
   if (S.shopOpen) return;
   const w = WEAPONS[S.curW];
   const zl = S.zoomed ? (S.curW === 0 ? rifleZoom() : w.zoom) : 1;
-  const base = (touch ? 0.0062 : 0.0021) * S.settings.sens / zl;
+  // Antes se dividía por el aumento completo (4.5×-9×) y apuntar con la mira puesta
+  // iba lentísimo. Ahora el divisor es una potencia fraccionaria y se aplica la
+  // sensibilidad de mira de AJUSTES: el zoom sigue siendo preciso pero ágil.
+  const zoomDiv = Math.pow(zl, 0.62);
+  const aimBoost = S.zoomed ? (S.settings.aimSens || 1.2) : 1;
+  const base = (touch ? 0.0068 : 0.0022) * S.settings.sens * aimBoost / zoomDiv;
   const ix = S.settings.invertX ? -1 : 1;
   const iy = S.settings.invertY ? -1 : 1;
   camYaw -= dx * base * ix;
@@ -2029,13 +2313,124 @@ function updateAim(dt) {
   camera.rotation.z = (Math.random() - 0.5) * sh * 0.025;
 }
 
+// ---------------- JUGADOR A PIE: WASD (PC) + JOYSTICK VIRTUAL (MÓVIL) ----------------
+// El tirador ya no está clavado en el nido: recorre las 4 plantas de la torre,
+// sube y baja por la caja de escaleras y puede pisar el suelo de nuestro lado de
+// la frontera. La altura del apoyo la resuelve world.sampleWalk() sobre las
+// superficies registradas al construir la torre (plantas, rellanos, puentes y
+// tramos de escalera), así que las escaleras son funcionales de verdad: se sube
+// caminando y no se puede uno caer por los bordes.
+const PLAYER_EYE = EYE_HEIGHT;
+const WALK_SPEED = 3.15, WALK_SPRINT = 5.4;
+const player = {
+  x: SNIPER_EYE.x, z: SNIPER_EYE.z,
+  feet: FLOOR_Y.nido, y: SNIPER_EYE.y,
+  floor: 1, label: 'NIDO · P1', moving: false, sprint: false,
+  phase: 0, bob: 0, grounded: false,
+};
+const moveKeys = { f: false, b: false, l: false, r: false, sprint: false };
+const joy = { active: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0 };
+
+function floorInfoFor(feetY) {
+  if (feetY < 1.2) return { id: 0, label: 'BASE · P0' };
+  if (feetY < FLOOR_Y.nido - 1.7) return { id: -1, label: 'ESCALERA' };
+  if (feetY < FLOOR_Y.obs - 1.7) return { id: 1, label: 'NIDO · P1' };
+  if (feetY < FLOOR_Y.vigia - 1.7) return { id: 2, label: 'OBSERVATORIO · P2' };
+  return { id: 3, label: 'VIGÍA · P3' };
+}
+function updateFloorHUD(force) {
+  const el = $('floorVal');
+  if (el) el.textContent = player.label;
+  const warn = $('groundWarn');
+  if (warn) warn.classList.toggle('show', !!player.grounded && S.playing && !S.paused);
+  const hv = $('moveHintVal');
+  if (hv) hv.textContent = isTouchDevice ? 'JOYSTICK IZQ.' : 'W A S D';
+  if (force && el) el.classList.add('bump');
+  if (force) setTimeout(() => { const e2 = $('floorVal'); if (e2) e2.classList.remove('bump'); }, 260);
+}
+function resetPlayer() {
+  player.x = SNIPER_EYE.x; player.z = SNIPER_EYE.z;
+  player.feet = FLOOR_Y.nido; player.y = SNIPER_EYE.y;
+  player.moving = false; player.bob = 0; player.phase = 0; player.grounded = false;
+  moveKeys.f = moveKeys.b = moveKeys.l = moveKeys.r = moveKeys.sprint = false;
+  joy.active = false; joy.id = null; joy.dx = joy.dy = joy.mag = 0;
+  hideJoystick();
+  const info = floorInfoFor(player.feet);
+  player.floor = info.id; player.label = info.label;
+  camera.position.set(player.x, player.y, player.z);
+  updateFloorHUD();
+}
+function setMoveKey(code, down) {
+  switch (code) {
+    case 'KeyW': case 'ArrowUp': moveKeys.f = down; return true;
+    case 'KeyS': case 'ArrowDown': moveKeys.b = down; return true;
+    case 'KeyA': case 'ArrowLeft': moveKeys.l = down; return true;
+    case 'KeyD': case 'ArrowRight': moveKeys.r = down; return true;
+    case 'ShiftLeft': case 'ShiftRight': moveKeys.sprint = down; return true;
+    default: return false;
+  }
+}
+function updatePlayer(dt) {
+  let ix = (moveKeys.r ? 1 : 0) - (moveKeys.l ? 1 : 0);
+  let iz = (moveKeys.b ? 1 : 0) - (moveKeys.f ? 1 : 0);
+  if (joy.active && joy.mag > 0.14) { ix += joy.dx; iz += joy.dy; }
+  const mag = Math.hypot(ix, iz);
+  const moving = mag > 0.08;
+  player.sprint = !!moveKeys.sprint;
+  if (moving) {
+    const n = Math.max(1, mag);
+    const ux = ix / n, uz = iz / n;
+    const speed = (player.sprint ? WALK_SPRINT : WALK_SPEED) * Math.min(1, mag);
+    const sy = Math.sin(camYaw), cy = Math.cos(camYaw);
+    // delante = -Z local de la cámara; derecha = +X local (misma convención que la vista)
+    const fwd = -uz, str = ux;
+    const dx = (-sy * fwd + cy * str) * speed * dt;
+    const dz = (-cy * fwd - sy * str) * speed * dt;
+    const px = player.x, pz = player.z, py = player.feet;
+    const s2 = world.sampleWalk(px + dx, pz + dz, py);
+    if (s2 && !world.walkBlocked(px + dx, pz + dz, s2.y)) {
+      player.x = px + dx; player.z = pz + dz; player.feet = s2.y;
+    } else {
+      // deslizamiento por el borde (barandillas, parapetos, pilares, sacos)
+      const sa = world.sampleWalk(px + dx, pz, py);
+      if (sa && !world.walkBlocked(px + dx, pz, sa.y)) { player.x = px + dx; player.feet = sa.y; }
+      const sb = world.sampleWalk(player.x, pz + dz, py);
+      if (sb && !world.walkBlocked(player.x, pz + dz, sb.y)) { player.z = pz + dz; player.feet = sb.y; }
+    }
+  }
+  player.moving = moving;
+  const wasGrounded = player.grounded;
+  player.grounded = player.feet < 1.2;
+  player.phase += dt * (moving ? (player.sprint ? 11.5 : 8.2) : 0);
+  const bobT = moving ? Math.sin(player.phase) * 0.042 : 0;
+  player.bob += (bobT - player.bob) * Math.min(1, dt * 12);
+  const eyeY = player.feet + PLAYER_EYE + player.bob;
+  player.y += (eyeY - player.y) * Math.min(1, dt * 18);
+  camera.position.set(player.x, player.y, player.z);
+  const info = floorInfoFor(player.feet);
+  if (info.label !== player.label) {
+    player.label = info.label; player.floor = info.id;
+    updateFloorHUD(true);
+    if (info.id >= 0 && S.playing && !S.paused) {
+      try { audio.click(); } catch (e) {}
+      toast('PLANTA: ' + info.label);
+    }
+  }
+  if (player.grounded !== wasGrounded) updateFloorHUD();
+}
+
 // ---------------- bucle principal ----------------
 const clock = new THREE.Clock();
 let fpsN = 0, fpsT = 0, hudT = 0;
+let menuT = 0;
 function animate() {
   requestAnimationFrame(animate);
   const rawDt = Math.min(0.05, clock.getDelta());
-  const paused = S.paused || !S.playing;
+  // PAUSA REAL: con la partida en pausa (o con cualquier menú modal abierto) no
+  // avanza NADA: ni entidades, ni proyectiles, ni clima, ni agua, ni helicóptero,
+  // ni audio. Solo se redibuja el fotograma congelado detrás del menú.
+  const frozen = S.paused || modalsOpen();
+  const paused = frozen || !S.playing;
   const dt = paused ? 0 : rawDt;
 
   if (dt > 0) {
@@ -2057,8 +2452,15 @@ function animate() {
           // Los roles de mar reposicionan su aparición en el agua dentro de spawn().
           const isBoss = (t === 'boss');
           const isTitano = isBoss && (S.wave % 10 === 0);
-          const opt = isBoss ? { bossVariant: isTitano ? 'titanosaurus' : 'carnotaurus' } : undefined;
-          const z = ent.spawn(t, rand(FENCE_X0, FENCE_X1), rand(-45, -17), opt);
+          // PERÍMETRO DE APARICIÓN: se calcula desde la valla MÁS ALEJADA de nuestro
+          // lado (las 3 capas base o las que haya colocado el jugador). Nada —ni los
+          // jefes— puede aparecer al sur de esa línea.
+          const front = frontLineZ();
+          const opt = { frontZ: front };
+          if (isBoss) opt.bossVariant = isTitano ? 'titanosaurus' : 'carnotaurus';
+          const spawnX = isBoss ? rand(SHORE_X + 6, FENCE_X1 - 4) : rand(FENCE_X0, FENCE_X1);
+          const spawnZ = isBoss ? front - rand(20, 34) : front - rand(11, 26);
+          const z = ent.spawn(t, spawnX, Math.min(spawnZ, -18), opt);
           if (t === 'boss') {
             const bb = $('bossbar');
             if (bb) bb.style.display = 'block';
@@ -2117,10 +2519,13 @@ function animate() {
       placedFences: world.placedFences,
       fenceAlive: S.fences.some(f => f.alive) || (world.placedFences && world.placedFences.some(f => f.alive)),
       playerPos: camera.position,
+      playerGrounded: player.grounded,
+      towerBase: TOWER_ASSAULT,
       extract: { x: 26, z: 2 },
     });
 
     updateProjectiles(dt);
+    updatePlayer(dt);
     world.fenceVisual(fenceFracs());
 
     const hd = world.heliPosV.distanceTo(camera.position);
@@ -2151,13 +2556,18 @@ function animate() {
     audio.updateMusic(dt);
   }
 
-  world.updateEnv(paused ? 0 : dt, S.time, S.dayT, S.storm, S.lightning);
-  if (dt > 0) {
+  if (!paused) {
+    world.updateEnv(dt, S.time, S.dayT, S.storm, S.lightning);
     fx.update(dt);
     world.updateViewmodel(dt, S.time, S.firing);
+  } else if (!S.playing) {
+    // En el menú principal el fondo sigue vivo (agua, lluvia, bandera) con un reloj
+    // propio que NO toca el estado de la partida.
+    menuT += rawDt;
+    world.updateEnv(rawDt, menuT, S.dayT, S.storm, 0);
   }
 
-  if (S.fenceEditMode) {
+  if (S.fenceEditMode && !frozen) {
     // Holograma + retícula en el punto EXACTO de colocación (rayo central,
     // sin dispersión) sobre todo el corredor construible.
     computeFenceAimPoint(_tmp);
@@ -2191,9 +2601,11 @@ addEventListener('resize', () => {
 applyQuality();
 applySettingsToUI();
 audio.voiceOn = S.settings.voice === 'on';
+resetPlayer();
 updateMenuBest();
 renderSlots();
 updateHUD();
+updateFenceEditorUI();
 animate();
 
 // ---------------- gancho de depuración ----------------
@@ -2210,5 +2622,10 @@ if (typeof window !== 'undefined') {
     openFenceEditor, closeFenceEditor, toggleFenceEditor, extendIntermissionTime,
     setFenceEditorModel, cycleFenceRotation, setFenceRotation, setFenceTool,
     handleFenceEditorClick, computeFenceAimPoint,
+    // movimiento a pie, editor apartable y perímetro de aparición
+    player, moveKeys, joy, updatePlayer, resetPlayer, floorInfoFor,
+    setFencePanel, toggleFencePanel, placeFenceAndStow, cycleFenceTool,
+    frontLineZ, pauseGame, resumeGame, saveGame, loadSave,
+    EYE_HEIGHT, FLOOR_Y, TOWER_ASSAULT, TOWER_FLOORS,
   };
 }

@@ -35,6 +35,23 @@ export const SNIPER_EYE = Object.freeze({ x: 0, y: 13.95, z: 32.0 });
 export const PARAPET_TOP = 13.14;
 export const PARAPET_Z = 31.05;
 
+// ---------- TORRE AMPLIADA: PLANTAS Y COTAS ----------
+// La torre gana DOS alturas hacia arriba (OBSERVATORIO y VIGÍA) y UNA hacia abajo
+// (BASE, a nivel de suelo). EYE_HEIGHT es la altura del ojo del tirador sobre el
+// suelo de la planta: SNIPER_EYE.y (13.95) = FLOOR_Y.nido (12.325) + 1.625.
+export const EYE_HEIGHT = 1.625;
+export const TOWER_X = 0;
+export const TOWER_Z = 34;
+export const FLOOR_Y = Object.freeze({ base: 0, nido: 12.325, obs: 16.43, vigia: 20.535, roof: 24.14 });
+export const TOWER_FLOORS = Object.freeze([
+  { id: 0, label: 'BASE',         y: FLOOR_Y.base },
+  { id: 1, label: 'NIDO',         y: FLOOR_Y.nido },
+  { id: 2, label: 'OBSERVATORIO', y: FLOOR_Y.obs },
+  { id: 3, label: 'VIGÍA',        y: FLOOR_Y.vigia },
+]);
+// Punto donde se amontonan los infectados al pie de la torre (asalto cuerpo a cuerpo)
+export const TOWER_ASSAULT = Object.freeze({ x: 0, z: 30.2 });
+
 // ---------- GEOGRAFÍA DEL SECTOR COSTERO (costa 25/75) ----------
 // El mar queda a la IZQUIERDA (oeste, x < SHORE_X) y está DELIMITADO A LA COSTA: el
 // plano de agua termina exactamente en x = SHORE_X y no se solapa con el terreno.
@@ -58,6 +75,9 @@ export const BUILD_X0 = FENCE_X0;  // -26 (línea de costa)
 export const BUILD_X1 = FENCE_X1;  // +32 (muro este)
 export const BUILD_Z0 = -45;       // horizonte de aparición
 export const BUILD_Z1 = 12;        // sacos / zona de extracción
+// Límites del paseo a pie por NUESTRO lado de la frontera (playa propia + torre):
+// desde la orilla hasta el muro este, y desde la valla interior hacia el sur.
+export const WALK_BOUNDS = Object.freeze({ x0: SHORE_X + 0.9, x1: 31.4, z0: -1.6, z1: 62 });
 // Tiempos del asalto anfibio: 3 s para poner la lancha + 2 s para salir de la orilla.
 export const BOAT_DEPLOY_TIME = 3.0;
 export const BOAT_LAUNCH_TIME = 2.0;
@@ -69,6 +89,16 @@ export class World {
     this.lampLights = []; this.lampMats = [];
     this.fencePosts = []; this.fenceRails = [];
     this.placedFences = [];
+    // Superficies por las que el jugador puede caminar a pie (plantas de la torre,
+    // rellanos, puentes, tramos de escalera y suelo de nuestro lado de la frontera).
+    this.walk = { plates: [], ramps: [], obstacles: [], tolerance: 0.85 };
+    this.walk.plates.push({ x0: WALK_BOUNDS.x0, x1: WALK_BOUNDS.x1, z0: WALK_BOUNDS.z0, z1: WALK_BOUNDS.z1, y: 0, floor: 0 });
+    // Sacos terreros y línea de la valla interior: no se atraviesan a pie
+    this.walk.obstacles.push(
+      { x0: -8.7, x1: 12.4, z0: 2.7, z1: 3.75, y0: -1, y1: 1.25 },
+      { x0: FENCE_X0, x1: FENCE_X1, z0: -1.35, z1: -0.65, y0: -1, y1: 6 },
+      { x0: 25.6, x1: 26.4, z0: 1.6, z1: 2.4, y0: -1, y1: 5 },
+    );
     this.hologramGroup = new THREE.Group();
     this.hologramGroup.name = 'fenceHologram';
     this.scene.add(this.hologramGroup);
@@ -415,15 +445,21 @@ export class World {
     // Cargar y sustituir con modelos 3D de /resources/construcción
     this.populate3DFences();
 
-    // Farolas de perímetro distribuidas de costa (x=-26) a muro (x=32)
+    // Farolas de perímetro distribuidas de costa (x=-26) a muro (x=32).
+    // NOTA: se retiran las bombillas esféricas amarillas (los "circulitos" que
+    // flotaban sobre las vallas). Solo queda el báculo oscuro + la luz que baña
+    // el terreno, sin ningún punto amarillo visible en el horizonte.
+    const lampPoleMat = new THREE.MeshStandardMaterial({ color: 0x2b3439, metalness: 0.6, roughness: 0.6 });
     for (const fz of FENCE_ZS) {
       for (const x of [-20, -7, 6, 19]) {
-        const mat = new THREE.MeshBasicMaterial({ color: 0xffe290 });
-        const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), mat);
-        lamp.position.set(x, 6, fz);
-        this.scene.add(lamp); this.lampMats.push(mat);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 6, 6), lampPoleMat);
+        pole.position.set(x, 3, fz + 0.9);
+        this.scene.add(pole);
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.28), lampPoleMat);
+        head.position.set(x, 5.95, fz + 0.75);
+        this.scene.add(head);
         const l = new THREE.PointLight(0xffbf60, 2.5, 15, 1.4);
-        l.position.copy(lamp.position);
+        l.position.set(x, 5.8, fz + 0.6);
         this.scene.add(l); this.lampLights.push(l);
       }
     }
@@ -463,6 +499,9 @@ export class World {
       this.build3DLayer(1, FENCE_ZS[1], 'concrete', 3.9);
       // Capa 2 (Interior z = -1): Vallas de hierro forjado reforzadas
       this.build3DLayer(2, FENCE_ZS[2], 'metal', 3.4);
+      // Los modelos ya están listos: reintentar las vallas guardadas que no se
+      // pudieron instanciar durante la carga de la partida.
+      this.flushPendingRestore();
     }).catch(err => {
       console.warn('Fallback a vallas procedurales:', err);
     });
@@ -534,6 +573,49 @@ export class World {
     if (idx >= 0) this.placedFences.splice(idx, 1);
     if (fenceObj) fenceObj.alive = false;
     if (fenceObj.mesh) this.fence3DGroup.remove(fenceObj.mesh);
+  }
+
+  // ---------- PERSISTENCIA DE LAS VALLAS COLOCADAS POR EL JUGADOR ----------
+  // Solo se serializan las personalizadas (layerIndex < 0): las 3 capas base se
+  // reconstruyen solas al cargar el mundo.
+  serializeCustomFences() {
+    return this.placedFences
+      .filter(f => f.layerIndex < 0)
+      .map(f => ({
+        t: f.type,
+        x: Math.round(f.x * 100) / 100,
+        z: Math.round(f.z * 100) / 100,
+        r: Math.round((f.rotation || 0) * 1000) / 1000,
+        hp: Math.max(0, Math.round(f.hp)),
+        mhp: Math.max(1, Math.round(f.maxHp)),
+      }));
+  }
+
+  // Borra TODAS las vallas personalizadas (partida nueva desde cero)
+  clearCustomFences() {
+    this._pendingRestore = [];
+    for (const f of [...this.placedFences]) {
+      if (f.layerIndex < 0) this.removePlacedFence(f);
+    }
+  }
+
+  // Restaura las vallas guardadas. Si los modelos 3D aún no han terminado de
+  // cargar se dejan en cola y se reintentan al terminar (populate3DFences).
+  restoreCustomFences(list) {
+    if (!Array.isArray(list) || !list.length) return;
+    this._pendingRestore = [];
+    for (const it of list) {
+      if (!it || !FENCE_CATALOG[it.t]) continue;
+      const made = this.addPlacedFence(it.t, it.x, it.z, it.r || 0, it.hp || FENCE_CATALOG[it.t].hp, it.mhp || FENCE_CATALOG[it.t].hp);
+      if (!made) this._pendingRestore.push(it);
+    }
+  }
+
+  flushPendingRestore() {
+    if (!this._pendingRestore || !this._pendingRestore.length) return;
+    const pending = this._pendingRestore;
+    this._pendingRestore = [];
+    this.restoreCustomFences(pending);
   }
 
   // Muestra el holograma de previsualización para colocar vallas.
@@ -627,109 +709,8 @@ export class World {
       this.scene.add(b);
     });
 
-    // ========== GRAN TORRE / NIDO ELEVADO DEL FRANCOTIRADOR ==========
-    // (grupo en x=0, z=34 · ojo del tirador SNIPER_EYE = y 13.95, z 32.0 en game.js)
-    const tower = new THREE.Group();
-    tower.name = 'sniperTower';
-    tower.position.set(0, 0, 34);
-    this.tower = tower;
-
-    // 4 pilares estructurales de acero desde el suelo hasta la plataforma
-    const pillarCoords = [[-3.4, -2.6], [3.4, -2.6], [-3.4, 2.6], [3.4, 2.6]];
-    for (const [lx, lz] of pillarCoords) {
-      const pilar = new THREE.Mesh(new THREE.BoxGeometry(0.55, 12.4, 0.55), metalMat);
-      pilar.position.set(lx, 6.2, lz);
-      pilar.castShadow = true;
-      tower.add(pilar);
-      // zapata de hormigón
-      const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.2), new THREE.MeshStandardMaterial({ color: 0x555855, roughness: 0.9 }));
-      base.position.set(lx, 0.25, lz);
-      tower.add(base);
-    }
-    // vigas cruzadas de refuerzo
-    for (const yLevel of [3.5, 7.5, 11.2]) {
-      const bFront = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.25, 0.25), metalMat);
-      bFront.position.set(0, yLevel, -2.6); tower.add(bFront);
-      const bBack = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.25, 0.25), metalMat);
-      bBack.position.set(0, yLevel, 2.6); tower.add(bBack);
-      const bLeft = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 5.2), metalMat);
-      bLeft.position.set(-3.4, yLevel, 0); tower.add(bLeft);
-      const bRight = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 5.2), metalMat);
-      bRight.position.set(3.4, yLevel, 0); tower.add(bRight);
-    }
-
-    // Suelo de la plataforma del francotirador a y = 12.15 (superior en 12.325)
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(7.6, 0.35, 6.4), metalMat);
-    deck.position.set(0, 12.15, 0);
-    deck.receiveShadow = true;
-    tower.add(deck);
-
-    // ---- PARAPETO BAJO DE TIRO (apoyo del francotirador) ----
-    // Geometría calculada para que el ojo del tirador (SNIPER_EYE) quede ~0.8 m POR
-    // ENCIMA de la coronación: así el muro solo entra en cuadro en la franja inferior
-    // (y al bajar la vista), sin tapar nunca la valla ni a los zombis.
-    const wallH = PARAPET_TOP - 0.44 - 12.325;          // muro de madera bajo los sacos
-    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(7.4, wallH, 0.45), darkWood);
-    frontWall.position.set(0, 12.325 + wallH / 2, PARAPET_Z - 34);
-    frontWall.castShadow = true;
-    tower.add(frontWall);
-
-    // Hilera de sacos de arena en el frontal del nido (apoyo para el cañón)
-    for (let i = 0; i < 9; i++) {
-      const bag = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.55, 3, 6), sandMat);
-      bag.rotation.z = Math.PI / 2;
-      bag.position.set(-3.0 + i * 0.75, PARAPET_TOP - 0.24, PARAPET_Z - 34);
-      bag.castShadow = true;
-      tower.add(bag);
-    }
-
-    // Barandillas laterales y traseras
-    for (const sx of [-3.7, 3.7]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.1, 6.2), metalMat);
-      rail.position.set(sx, 12.8, 0); tower.add(rail);
-    }
-    const backRail = new THREE.Mesh(new THREE.BoxGeometry(7.4, 1.1, 0.12), metalMat);
-    backRail.position.set(0, 12.8, 3.1); tower.add(backRail);
-
-    // Techo / marquesina militar
-    const roofPillarCoords = [[-3.4, -2.6], [3.4, -2.6], [-3.4, 2.6], [3.4, 2.6]];
-    for (const [lx, lz] of roofPillarCoords) {
-      const rp = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4.2, 0.2), metalMat);
-      rp.position.set(lx, 14.3, lz); tower.add(rp);
-    }
-    const canopy = new THREE.Mesh(new THREE.BoxGeometry(8.2, 0.18, 7.0), camoMat);
-    canopy.position.set(0, 16.4, 0);
-    canopy.castShadow = true;
-    tower.add(canopy);
-
-    // Mástil de comunicaciones y baliza roja superior
-    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 3.6, 6), metalMat);
-    mast.position.set(-3.2, 18.2, -2.4); tower.add(mast);
-    this.beaconMat = new THREE.MeshBasicMaterial({ color: 0xff3344 });
-    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), this.beaconMat);
-    beacon.position.set(-3.2, 20.0, -2.4); tower.add(beacon);
-
-    // Focos frontales de la torre apuntando hacia el terreno / valla
-    for (const fx of [-3.2, 3.2]) {
-      const towerSpot = new THREE.SpotLight(0xffeed0, 5.0, 80, 0.6, 0.3, 1.2);
-      towerSpot.position.set(fx, 13.6, -2.8);
-      const tgt = new THREE.Object3D();
-      tgt.position.set(fx * 1.5, 0, -5);
-      this.scene.add(tgt);
-      towerSpot.target = tgt;
-      tower.add(towerSpot);
-      this.lampLights.push(towerSpot);
-    }
-
-    // Equipo táctico dentro del nido (cajas de munición, radio)
-    const ammoBox = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.45, 0.5), new THREE.MeshStandardMaterial({ color: 0x2e4a32, roughness: 0.6 }));
-    ammoBox.position.set(-2.2, 12.5, -1.8); ammoBox.castShadow = true; tower.add(ammoBox);
-    const radioMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.4), new THREE.MeshStandardMaterial({ color: 0x1d2426, metalness: 0.8, roughness: 0.3 }));
-    radioMesh.position.set(2.4, 12.5, -1.8); tower.add(radioMesh);
-    const radioAnt = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.2, 4), metalMat);
-    radioAnt.position.set(2.6, 13.3, -1.9); tower.add(radioAnt);
-
-    this.scene.add(tower);
+    // ========== TORRE AMPLIADA (4 plantas + escaleras funcionales) ==========
+    this.buildTower(metalMat, darkWood, sandMat, camoMat);
 
     // punto de extracción (bandera verde)
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 5, 6), metalMat);
@@ -740,6 +721,284 @@ export class World {
     this.flag = flag;
     const ex = new THREE.PointLight(0x2bd96a, 1.8, 10, 1.8);
     ex.position.set(26, 3, 2); this.scene.add(ex);
+  }
+
+  // ========== TORRE DE VIGILANCIA AMPLIADA: 4 PLANTAS + ESCALERAS FUNCIONALES ==========
+  // Planta 0 (BASE, a nivel de suelo) + NIDO (la plataforma original del tirador)
+  // + DOS plantas nuevas hacia arriba (OBSERVATORIO y VIGÍA). Todas se recorren a
+  // pie: la caja de escaleras adosada a la cara sur (z > 37.2) conecta los niveles
+  // con tramos en tijera y rellanos. Las superficies caminables se registran en
+  // this.walk para que el controlador del jugador (game.js) resuelva la altura del
+  // suelo, bloquee los bordes y suba/baje por las escaleras.
+  buildTower(metalMat, darkWood, sandMat, camoMat) {
+    const TZ = TOWER_Z;
+    const Y1 = FLOOR_Y.nido, Y2 = FLOOR_Y.obs, Y3 = FLOOR_Y.vigia, YR = FLOOR_Y.roof;
+    const concreteMat = new THREE.MeshStandardMaterial({ color: 0x555855, roughness: 0.9 });
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x39474d, metalness: 0.7, roughness: 0.4 });
+    const crateMat = new THREE.MeshStandardMaterial({ color: 0x2e4a32, roughness: 0.6 });
+    const radioMat = new THREE.MeshStandardMaterial({ color: 0x1d2426, metalness: 0.8, roughness: 0.3 });
+    const tower = new THREE.Group();
+    tower.name = 'sniperTower';
+    this.tower = tower;
+    const W = this.walk;
+    const plate = (x0, x1, z0, z1, y, floor) => W.plates.push({ x0, x1, z0, z1, y, floor });
+    // rampa: se normalizan los extremos (x0 < x1) para que sampleWalk pueda
+    // evaluar tanto los tramos que suben hacia el este como hacia el oeste.
+    const rampDef = (xa, xb, z0, z1, ya, yb, floor) => {
+      if (xa <= xb) W.ramps.push({ x0: xa, x1: xb, z0, z1, ya, yb, axis: 'x', floor });
+      else W.ramps.push({ x0: xb, x1: xa, z0, z1, ya: yb, yb: ya, axis: 'x', floor });
+    };
+    const box = (w, h, d, mat, x, y, z, shadow) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(x, y, z);
+      if (shadow) { m.castShadow = true; m.receiveShadow = true; }
+      tower.add(m);
+      return m;
+    };
+
+    // ---- estructura vertical: pilares principales + pilares de la caja de escaleras ----
+    const pillarCoords = [[-3.4, TZ - 2.6], [3.4, TZ - 2.6], [-3.4, TZ + 2.6], [3.4, TZ + 2.6]];
+    for (const [px, pz] of pillarCoords) {
+      box(0.55, YR, 0.55, metalMat, px, YR / 2, pz, true);
+      box(1.2, 0.5, 1.2, concreteMat, px, 0.25, pz);
+      W.obstacles.push({ x0: px - 0.34, x1: px + 0.34, z0: pz - 0.34, z1: pz + 0.34, y0: -1, y1: YR + 2 });
+    }
+    for (const [px, pz] of [[-3.9, 37.4], [3.9, 37.4], [-3.9, 41.4], [3.9, 41.4]]) {
+      box(0.42, YR, 0.42, metalMat, px, YR / 2, pz, true);
+      box(1.0, 0.45, 1.0, concreteMat, px, 0.22, pz);
+    }
+    // vigas cruzadas de refuerzo en cada nivel + arriostrado inclinado
+    for (const yLevel of [3.5, 7.5, 11.2, Y1, Y2, Y3]) {
+      box(6.8, 0.25, 0.25, metalMat, 0, yLevel, TZ - 2.6);
+      box(6.8, 0.25, 0.25, metalMat, 0, yLevel, TZ + 2.6);
+      box(0.25, 0.25, 5.2, metalMat, -3.4, yLevel, TZ);
+      box(0.25, 0.25, 5.2, metalMat, 3.4, yLevel, TZ);
+    }
+    for (const s of [-1, 1]) {
+      const brace = box(0.14, 13.4, 0.14, metalMat, s * 3.4, 6.5, TZ);
+      brace.rotation.x = s * 0.42;
+    }
+
+    // ---- suelos de planta (superficie superior = cota caminable) ----
+    box(7.6, 0.35, 6.4, metalMat, 0, Y1 - 0.175, TZ, true);
+    box(7.6, 0.30, 6.4, metalMat, 0, Y2 - 0.15, TZ, true);
+    box(7.6, 0.30, 6.4, metalMat, 0, Y3 - 0.15, TZ, true);
+    plate(-3.55, 3.55, TZ - 2.5, TZ + 3.15, Y1, 1);
+    plate(-3.55, 3.55, TZ - 2.5, TZ + 3.15, Y2, 2);
+    plate(-3.55, 3.55, TZ - 2.5, TZ + 3.15, Y3, 3);
+
+    // ---- parapetos de tiro y barandillas en cada planta elevada ----
+    const levels = [
+      { y: Y1, doorEast: true },
+      { y: Y2, doorEast: false },
+      { y: Y3, doorEast: true },
+    ];
+    for (const lv of levels) {
+      const y = lv.y;
+      const wallH = 0.375;
+      box(7.4, wallH, 0.45, darkWood, 0, y + 0.44 + wallH / 2, PARAPET_Z, true);
+      for (let i = 0; i < 9; i++) {
+        const bag = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.55, 3, 6), sandMat);
+        bag.rotation.z = Math.PI / 2;
+        bag.position.set(-3.0 + i * 0.75, y + 0.815 - 0.24, PARAPET_Z);
+        bag.castShadow = true;
+        tower.add(bag);
+      }
+      for (const sx of [-3.7, 3.7]) {
+        box(0.12, 1.1, 6.2, railMat, sx, y + 0.55, TZ);
+        box(0.06, 0.06, 6.2, metalMat, sx, y + 0.95, TZ);
+      }
+      // barandilla trasera con hueco de paso hacia el puente de la escalera
+      if (lv.doorEast) box(5.9, 1.1, 0.12, railMat, -0.75, y + 0.55, TZ + 3.1);
+      else box(5.9, 1.1, 0.12, railMat, 0.75, y + 0.55, TZ + 3.1);
+    }
+
+    // ---- techo / marquesina sobre la planta superior + mástil y baliza ----
+    for (const [lx, lz] of pillarCoords) box(0.2, YR - Y3, 0.2, metalMat, lx, Y3 + (YR - Y3) / 2, lz);
+    box(8.6, 0.18, 7.6, camoMat, 0, YR, TZ, true);
+    box(8.9, 0.12, 0.35, metalMat, 0, YR - 0.12, TZ - 3.7);
+    box(0.16, 3.6, 0.16, metalMat, -3.2, YR + 1.8, TZ - 2.4);
+    this.beaconMat = new THREE.MeshBasicMaterial({ color: 0xff3344 });
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), this.beaconMat);
+    beacon.position.set(-3.2, YR + 3.7, TZ - 2.4);
+    tower.add(beacon);
+
+    // ---- focos: los del nido (como antes) + uno largo desde la planta superior ----
+    for (const fx of [-3.2, 3.2]) {
+      const towerSpot = new THREE.SpotLight(0xffeed0, 5.0, 80, 0.6, 0.3, 1.2);
+      towerSpot.position.set(fx, Y1 + 1.3, TZ - 2.8);
+      const tgt = new THREE.Object3D();
+      tgt.position.set(fx * 1.5, 0, TZ - 9);
+      this.scene.add(tgt);
+      towerSpot.target = tgt;
+      tower.add(towerSpot);
+      this.lampLights.push(towerSpot);
+    }
+    const hiSpot = new THREE.SpotLight(0xffeed0, 3.4, 120, 0.72, 0.4, 1.2);
+    hiSpot.position.set(0, Y3 + 1.2, TZ - 2.8);
+    const hiTgt = new THREE.Object3D();
+    hiTgt.position.set(0, 0, TZ - 30);
+    this.scene.add(hiTgt);
+    hiSpot.target = hiTgt;
+    tower.add(hiSpot);
+    this.lampLights.push(hiSpot);
+
+    // ---- equipo táctico (silueta habitada en cada planta) ----
+    box(0.8, 0.45, 0.5, crateMat, -2.2, Y1 + 0.22, TZ - 1.8, true);
+    box(0.6, 0.5, 0.4, radioMat, 2.4, Y1 + 0.25, TZ - 1.8);
+    const radioAnt = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.2, 4), metalMat);
+    radioAnt.position.set(2.6, Y1 + 0.9, TZ - 1.9); tower.add(radioAnt);
+    box(0.7, 0.4, 0.45, crateMat, -2.6, Y2 + 0.2, TZ - 1.6);
+    box(0.55, 0.9, 0.55, radioMat, 2.7, Y2 + 0.45, TZ + 1.2);
+    box(0.75, 0.4, 0.5, crateMat, 2.3, Y3 + 0.2, TZ - 1.7);
+
+    // ========== CAJA DE ESCALERAS (cara sur, z > 37.2) ==========
+    // Tramos en tijera: cada uno sube 4.105 m en 6.8 m de recorrido (~31°).
+    const B1 = { z0: 37.3, z1: 39.4 }, B2 = { z0: 39.4, z1: 41.5 };
+    const XB = 3.4;
+    const RISE = Y2 - Y1;
+    const flights = [
+      { xa: -XB, xb: XB,  band: B1, ya: 0,        yb: RISE,     floor: 0 },
+      { xa: XB,  xb: -XB, band: B2, ya: RISE,     yb: RISE * 2, floor: 0 },
+      { xa: -XB, xb: XB,  band: B1, ya: RISE * 2, yb: Y1,       floor: 1 },
+      { xa: XB,  xb: -XB, band: B2, ya: Y1,       yb: Y2,       floor: 2 },
+      { xa: -XB, xb: XB,  band: B1, ya: Y2,       yb: Y3,       floor: 3 },
+    ];
+    const landings = [
+      { east: true,  y: RISE,     floor: 0, bridge: false },
+      { east: false, y: RISE * 2, floor: 0, bridge: false },
+      { east: true,  y: Y1,       floor: 1, bridge: true },
+      { east: false, y: Y2,       floor: 2, bridge: true },
+      { east: true,  y: Y3,       floor: 3, bridge: true },
+    ];
+    const STEPS_PER_FLIGHT = 17;
+    const stepMat = new THREE.MeshStandardMaterial({ color: 0x4a545a, metalness: 0.55, roughness: 0.55 });
+    const unit = new THREE.BoxGeometry(1, 1, 1);
+    const steps = new THREE.InstancedMesh(unit, stepMat, flights.length * STEPS_PER_FLIGHT);
+    steps.name = 'stairSteps'; steps.receiveShadow = true;
+    const posts = new THREE.InstancedMesh(unit, railMat, flights.length * 8);
+    posts.name = 'stairRailPosts';
+    const mtx = new THREE.Matrix4(), qq = new THREE.Quaternion(), sc = new THREE.Vector3(), po = new THREE.Vector3();
+    const idEuler = new THREE.Euler(0, 0, 0);
+    let si = 0, pi = 0;
+    for (const fl of flights) {
+      const bandW = fl.band.z1 - fl.band.z0;
+      const bandCZ = (fl.band.z0 + fl.band.z1) / 2;
+      const run = fl.xb - fl.xa;
+      const ang = Math.atan2(fl.yb - fl.ya, run);
+      const treadW = Math.abs(run) / STEPS_PER_FLIGHT;
+      for (let i = 0; i < STEPS_PER_FLIGHT; i++) {
+        const t1 = (i + 1) / STEPS_PER_FLIGHT;
+        const topY = fl.ya + (fl.yb - fl.ya) * t1;
+        const cx = fl.xa + run * (t1 - 0.5 / STEPS_PER_FLIGHT);
+        po.set(cx, topY - 0.31, bandCZ); qq.setFromEuler(idEuler);
+        sc.set(treadW + 0.03, 0.62, bandW);
+        steps.setMatrixAt(si++, mtx.compose(po, qq, sc));
+        // Zona sin altura libre bajo el tramo: se bloquea el paso a nivel de suelo
+        // para que nadie atraviese los peldaños con la cabeza (solo donde toca).
+        const under = topY - 0.62;
+        if (under < 1.8 && topY > 0.6) {
+          W.obstacles.push({ x0: cx - treadW / 2, x1: cx + treadW / 2, z0: fl.band.z0, z1: fl.band.z1, y0: -2, y1: topY - 0.67 });
+        }
+      }
+      const len = Math.hypot(run, fl.yb - fl.ya);
+      for (const s of [-1, 1]) {
+        const zSide = bandCZ + s * (bandW / 2 + 0.03);
+        const stringer = box(len, 0.34, 0.1, metalMat, (fl.xa + fl.xb) / 2, (fl.ya + fl.yb) / 2 - 0.24, zSide);
+        stringer.rotation.z = ang;
+        const rail = box(len, 0.08, 0.08, railMat, (fl.xa + fl.xb) / 2, (fl.ya + fl.yb) / 2 + 0.95, zSide);
+        rail.rotation.z = ang;
+        for (let k = 0; k < 4; k++) {
+          const t = (k + 0.5) / 4;
+          po.set(fl.xa + run * t, fl.ya + (fl.yb - fl.ya) * t + 0.45, zSide);
+          qq.setFromEuler(idEuler); sc.set(0.06, 1.0, 0.06);
+          posts.setMatrixAt(pi++, mtx.compose(po, qq, sc));
+        }
+      }
+      rampDef(fl.xa, fl.xb, fl.band.z0, fl.band.z1, fl.ya, fl.yb, fl.floor);
+    }
+    steps.instanceMatrix.needsUpdate = true;
+    posts.instanceMatrix.needsUpdate = true;
+    steps.computeBoundingSphere();
+    posts.computeBoundingSphere();
+    tower.add(steps); tower.add(posts);
+
+    // rellanos de giro + puentes de acceso a cada planta
+    for (const ld of landings) {
+      const x0 = ld.east ? 2.6 : -3.9, x1 = ld.east ? 3.9 : -2.6;
+      const cz = (B1.z0 + B2.z1) / 2, depth = B2.z1 - B1.z0;
+      box(x1 - x0, 0.22, depth, metalMat, (x0 + x1) / 2, ld.y - 0.11, cz, true);
+      plate(x0, x1, B1.z0, B2.z1, ld.y, ld.floor);
+      box(0.08, 1.05, depth, railMat, ld.east ? x1 : x0, ld.y + 0.52, cz);
+      if (ld.bridge) {
+        const bx0 = ld.east ? 2.2 : -3.6, bx1 = ld.east ? 3.6 : -2.2;
+        box(bx1 - bx0, 0.22, 2.9, metalMat, (bx0 + bx1) / 2, ld.y - 0.11, TZ + 1.7, true);
+        plate(bx0, bx1, TZ - 2.4, B1.z0 + 1.1, ld.y, ld.floor);
+        box(0.07, 1.0, 2.9, railMat, ld.east ? bx0 : bx1, ld.y + 0.5, TZ + 1.7);
+      }
+    }
+    // solera de la caja de escaleras + zócalos de seguridad
+    box(7.9, 0.14, 4.4, concreteMat, 0, 0.07, (B1.z0 + B2.z1) / 2);
+    box(0.14, 1.0, 4.4, railMat, -3.94, 0.5, (B1.z0 + B2.z1) / 2);
+    box(0.14, 1.0, 4.4, railMat, 3.94, 0.5, (B1.z0 + B2.z1) / 2);
+
+    // marcas de suelo en la entrada de la escalera (lado oeste, cota 0)
+    this.stairArrowMat = new THREE.MeshBasicMaterial({ color: 0x7cf8ff, transparent: true, opacity: 0.45, depthWrite: false });
+    for (let i = 0; i < 3; i++) {
+      const a = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.28), this.stairArrowMat);
+      a.rotation.x = -Math.PI / 2;
+      a.position.set(-3.0, 0.06, 43.0 + i * 0.75);
+      a.renderOrder = 3;
+      tower.add(a);
+    }
+    box(0.1, 2.2, 0.1, metalMat, -4.6, 1.1, 43.0);
+    box(1.6, 0.75, 0.09, new THREE.MeshBasicMaterial({ color: 0x0d2a33 }), -4.6, 2.0, 43.0);
+
+    this.scene.add(tower);
+  }
+
+  // ---------- SUPERFICIES CAMINABLES: consulta de altura y obstáculos ----------
+  // Devuelve la superficie de apoyo en (x, z) para un jugador con los pies en
+  // refY. Entre las candidatas dentro de la tolerancia se elige la MÁS ALTA (así
+  // se sube a los peldaños al pisarlos), lo que permite recorrer las rampas de la
+  // escalera pero impide caerse de una planta o "engancharte" al pasar por debajo.
+  // Devuelve null si no hay apoyo alcanzable → el movimiento queda bloqueado.
+  sampleWalk(x, z, refY) {
+    const W = this.walk;
+    if (!W) return null;
+    const tol = W.tolerance;
+    let bestY = null, bestFloor = 0;
+    for (let i = 0; i < W.plates.length; i++) {
+      const p = W.plates[i];
+      if (x < p.x0 || x > p.x1 || z < p.z0 || z > p.z1) continue;
+      if (Math.abs(p.y - refY) > tol) continue;
+      if (bestY === null || p.y > bestY) { bestY = p.y; bestFloor = p.floor; }
+    }
+    for (let i = 0; i < W.ramps.length; i++) {
+      const r = W.ramps[i];
+      if (x < r.x0 || x > r.x1 || z < r.z0 || z > r.z1) continue;
+      const t = r.axis === 'x'
+        ? (x - r.x0) / Math.max(1e-6, r.x1 - r.x0)
+        : (z - r.z0) / Math.max(1e-6, r.z1 - r.z0);
+      const y = r.ya + (r.yb - r.ya) * t;
+      if (Math.abs(y - refY) > tol) continue;
+      if (bestY === null || y > bestY) { bestY = y; bestFloor = r.floor; }
+    }
+    if (bestY === null) return null;
+    return { y: bestY, floor: bestFloor | 0 };
+  }
+
+  // Obstáculos que bloquean el paso (pilares, sacos terreros, peldaños bajos…)
+  walkBlocked(x, z, feetY) {
+    const W = this.walk;
+    if (!W) return false;
+    for (let i = 0; i < W.obstacles.length; i++) {
+      const o = W.obstacles[i];
+      if (x < o.x0 || x > o.x1 || z < o.z0 || z > o.z1) continue;
+      if (feetY < o.y0 || feetY > o.y1) continue;
+      return true;
+    }
+    return false;
   }
 
   // ---------- helicóptero ----------
