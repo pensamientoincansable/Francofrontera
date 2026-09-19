@@ -19,12 +19,19 @@ Abre `http://localhost:8000`.
 ### PC (Teclado y Ratón)
 | Tecla / Acción | Función |
 |---|---|
-| **Ratón** | Apuntar suavemente desde la torre elevada |
+| **W A S D / Flechas** | **Mover al tirador A PIE**: recorre el sector de nuestro lado y las 4 plantas de la torre |
+| **Shift** | Correr |
+| **Ratón** | Apuntar (giro libre 360°). La vista se adapta al zoom con la *sensibilidad de mira* de AJUSTES |
 | **Click izq.** | Disparar arma actual |
-| **Click der. / Espacio** | Activar mira telescópica (zoom con desenfoque periférico) |
+| **Click der. / Espacio** | Activar mira telescópica (a **pantalla completa**, solo se ve el bisel en los bordes) |
 | **ESC / Botón QUITAR MIRA** | Salir de la mira telescópica |
-| **E / C** | **Desplegar ametralladora autónoma (hasta 4 en el perímetro)** |
-| **L** | **Fabricar lancha de defensa en nuestra playa (200 pts, oleada 2+, máx. 2)** |
+| **V** | Editor de vallado (abre/cierra) |
+| **H** | **Apartar / mostrar el menú del vallado** (deja la pantalla despejada para colocar) |
+| **Espacio / Enter (en el editor)** | **COLOCAR** la valla en la retícula y apartar el menú automáticamente |
+| **R (en el editor)** | Rotar el tramo de valla |
+| **1-4 (en el editor)** | Elegir modelo de valla · **E** construir · **X** demoler |
+| **E / C** | Desplegar ametralladora autónoma (hasta 4 en el perímetro) |
+| **L** | Fabricar lancha de defensa en nuestra playa (200 pts, oleada 2+, máx. 2) |
 | **1 / 2 / 3 / 4** | Seleccionar arma (Rifle · Pistola · Lanzagranadas · Misiles) |
 | **Rueda** | Cambiar de arma |
 | **Q** | Alternar munición especial (Normal → Incendiaria → Eléctrica) |
@@ -33,17 +40,32 @@ Abre `http://localhost:8000`.
 | **T** | Solicitar ataque aéreo de helicóptero (Oleada 3+) |
 | **B** | Arsenal / Tienda de mejoras de campo |
 | **Enter** | Desplegar siguiente oleada (durante intermisión) |
-| **P / Esc** | Pausa |
+| **P / Esc** | **Pausa real**: congela enemigos, proyectiles, clima, agua, helicóptero y audio |
 | **M** | Silenciar audio |
+| **ALT (mantener)** | Mostrar el cursor para usar los botones del HUD sin perder la partida |
+
+> En PC el puntero se bloquea al entrar en combate. Si el bloqueo se pierde solo (p. ej. al pulsar ESC o al cambiar de ventana), **la partida se pausa automáticamente**: nunca sigues en combate sin control.
 
 ### Android / Pantallas Táctiles
-- **Superficie de arrastre (lado izquierdo/centro):** Control suave de orientación y puntería sin disparos accidentales.
-- **Botón FUEGO:** Botón circular prominente para disparar con el pulgar derecho (soporta ráfaga mantenida).
-- **Botón MIRA:** Alterna la mira telescópica con zoom óptico y desenfoque periférico.
-- **Botón TORRETA:** Coloca ametralladoras autónomas en las posiciones clave del perímetro defensivo.
-- **Botón LANCHA:** Fabrica lanchas de defensa en vuestra playa para cubrir el flanco marítimo.
-- **Botones de acción táctiles:** Recarga rápida, reparación de valla, ataque aéreo y cambio de munición.
-- **Botón Pantalla Completa (⛶):** Oculta barras de navegación para máxima inmersión táctil.
+- **Joystick virtual (mitad izquierda):** aparece **justo donde apoyas el pulgar** y **desaparece al soltar**. Desliza para caminar, subir y bajar escaleras; no ocupa pantalla cuando no lo usas.
+- **Arrastre en el resto de la pantalla:** puntería 360° (la sensibilidad se ajusta en AJUSTES, con valor propio para la mira puesta).
+- **Rejilla de armas 2×2:** cuatro botones grandes junto al botón de fuego. Sustituyen a las ranuras diminutas del HUD, que se colapsaban en cuanto ajustabas el zoom del navegador.
+- **Botón FUEGO:** disparo con el pulgar derecho (soporta ráfaga mantenida).
+- **Botón MIRA:** mira telescópica **a pantalla completa** (bisel fino en los bordes, retícula centrada, telemetría).
+- **⏸ PAUSA:** pastilla propia en la columna de acciones táctiles (además del botón de la barra superior).
+- **Botón COLOCAR (editor de vallado):** barra flotante en el borde derecho con COLOCAR · ROTAR · MODO · MENÚ · SALIR. COLOCAR pone la valla en la retícula **y aparta el menú** para ver exactamente dónde cae; MENÚ lo vuelve a traer. En móvil el panel se abre ya apartado y, cuando se muestra, queda como hoja inferior sin tapar la retícula.
+- **Resto de botones tácticos:** torreta, lancha, reparación, apoyo aéreo, munición especial, recarga, pantalla completa (⛶).
+
+## Novedades: Tirador a pie, torre de 4 plantas y interfaz adaptativa
+
+- **Movimiento libre (WASD / joystick):** el tirador ya no está clavado en el nido. Puede bajar al sector, caminar entre las vallas y recorrer la torre. Es más arriesgado: a pie de suelo los infectados que rebasan la línea **van a por él cuerpo a cuerpo** (mitad de daño que el asalto a la torre) y las piedras que caen a menos de 3,6 m hieren. El HUD avisa con `⚠ ESTÁS A PIE DE SUELO` y muestra la planta actual (`BASE · P0` → `VIGÍA · P3`).
+- **Torre ampliada: 2 plantas hacia arriba y 1 hacia abajo.** Cuatro niveles útiles —**BASE (P0)**, **NIDO (P1)**, **OBSERVATORIO (P2)** y **VIGÍA (P3)**— unidos por una **caja de escaleras real** en la cara sur (5 tramos en tijera con rellanos y puentes). Se sube y se baja **caminando**, sin saltos ni botones: el sistema de superficies (`sampleWalk` / `walkBlocked`) resuelve peldaños, rellanos, barandillas, parapetos, pilares y sacos. La posición inicial sigue siendo el nido del francotirador.
+- **Pausa de verdad:** con la partida en pausa (o cualquier menú modal abierto) el bucle deja de avanzar: `dt = 0` para entidades, proyectiles, clima, agua, helicóptero, audio y sacudidas de cámara. Solo se redibuja el fotograma congelado. El menú principal sigue teniendo fondo vivo con un reloj propio que no toca el estado de la partida.
+- **Vallado personalizado persistente:** los tramos que coloques (tipo, posición, rotación e integridad) **se guardan en la partida** y se restauran al pulsar CONTINUAR. Solo desaparecen al **empezar de cero** o al **demolerlos** desde el editor.
+- **Perímetro de aparición corregido:** la línea de spawn se calcula desde la **valla más alejada** de nuestro lado (las 3 capas base o las que hayas colocado tú). Nada —tampoco los jefes— puede aparecer ya entre nuestras vallas: los jefes entran 20-34 m más allá del frente y el resto 11-26 m.
+- **Mira a pantalla completa:** fuera el círculo negro pequeño. Ahora la vista ocupada por la mira es **toda la pantalla**, con un bisel fino, esquinas tácticas, viñeteado de lente, retícula centrada y telemetría. Apuntar con la mira puesta es **mucho más ágil**: el divisor de sensibilidad es una potencia fraccionaria del aumento (no el aumento completo) y hay un ajuste propio (`Sensibilidad con la mira puesta`, por defecto 1,2×).
+- **Editor de vallado fuera del centro:** en PC el panel queda **atracado a la izquierda**; en móvil, como **hoja inferior** que se abre ya apartada. La **barra flotante COLOCAR** vive en el borde derecho y aparta el menú en cuanto colocas, así la retícula nunca queda tapada.
+- **Sin circulitos amarillos:** retiradas las bombillas esféricas amarillas que flotaban sobre las vallas. Quedan el báculo oscuro y la luz que baña el terreno (la iluminación del perímetro no cambia).
 
 ## Novedades: Costa 25/75, Frente Paralelo y Lancha de Defensa
 
@@ -62,8 +84,9 @@ Abre `http://localhost:8000`.
 
 ## Novedades y Características Principales
 
-### 1. Nido de Francotirador Elevado a Gran Distancia
-- Ojo del tirador a ~14 m de altura, de pie tras el parapeto bajo de la torre de observación, a ~33 m de la valla.
+### 1. Torre de Vigilancia de 4 Plantas con Nido de Francotirador Elevado
+- Cuatro plantas transitables: **BASE (P0, a nivel de suelo)**, **NIDO (P1, ~14 m)**, **OBSERVATORIO (P2, ~18 m)** y **VIGÍA (P3, ~22 m)**, unidas por una caja de escaleras de 5 tramos en la cara sur.
+- Ojo del tirador a ~14 m de altura (posición inicial), de pie tras el parapeto bajo del nido, a ~33 m de la valla.
 - Encuadre inclinado hacia abajo: la valla y todo el campo de tiro quedan siempre en cuadro; el parapeto solo asoma en la franja inferior y se ve una parte del muro únicamente al mirar muy hacia abajo (para disparar apoyado en los sacos).
 - Ángulo de tiro descendente realista sobre el sector costero, permitiendo avistar a los zombis desde su emergencia en la playa hasta la línea defensiva.
 - Los infectados que superan la valla se amontonan al pie de la torre, dentro del campo de visión, y se avisa por radio para mirar hacia abajo.
@@ -75,7 +98,7 @@ Abre `http://localhost:8000`.
 - Alerta por radio cuando la horda empieza a sobrepasar al francotirador solitario.
 
 ### 3. Visibilidad Clara de Enemigos en la Valla
-- Batería de focos y reflectores perimetrales instalados en los postes de la valla que iluminan el área de aproximación con haces de luz de alta intensidad.
+- Batería de focos y reflectores perimetrales instalados en los postes de la valla que iluminan el área de aproximación con haces de luz de alta intensidad (sin bombillas esféricas visibles: solo báculo oscuro y luz).
 - Dos potentes focos tácticos en la torre de francotirador orientados hacia la valla.
 - Ajuste de niebla e iluminación ambiental nocturna para evitar que las figuras se pierdan en la oscuridad.
 - Marcadores tácticos de amenaza e indicadores visuales sobre la cabeza de los zombis conforme se aproximan a la línea.

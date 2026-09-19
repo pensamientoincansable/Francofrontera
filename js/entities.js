@@ -421,6 +421,11 @@ export class Entities {
     const bossVariant = (opt && opt.bossVariant) || (Math.random() < 0.5 ? 'carnotaurus' : 'titanosaurus');
     const { g, head, threatMarker, markerMat, hasMelee, headY, headZ, headR, bodyR, bodyH, bossName, mixer, action } = this.buildZombie(type, bossVariant);
     const forceLand = !!(opt && opt.forceLand);
+    // LÍNEA DE FRENTE: la valla más alejada de nuestro lado (capas base + las que
+    // coloque el jugador). Todo aparece SIEMPRE al norte de esa línea: así ningún
+    // jefe ni asaltante puede materializarse dentro de nuestra mitad del sector.
+    const frontZ = (opt && typeof opt.frontZ === 'number' && isFinite(opt.frontZ))
+      ? Math.min(opt.frontZ, FENCE_ZS[0]) : FENCE_ZS[0];
     const role = this.pickRole(type, forceLand);
     let sx = x, sz = z, state = 'advance';
     let embark = null, land = null, sailX = -19;
@@ -428,14 +433,16 @@ export class Entities {
       // Asalto anfibio: aparece en el mar (a la izquierda, desde el horizonte) y
       // rema hasta su punto de botadura en la franja costera norte.
       sx = SHORE_X - 9 + Math.random() * 8;       // en el agua, a 1-9 m de la orilla
-      sz = -42 + Math.random() * 18;              // z: -42..-24, en el horizonte marítimo
+      sz = frontZ - 10 - Math.random() * 18;      // siempre por delante de la línea
       state = 'to_shore';
-      const embarkZ = -26 + Math.random() * 8;
+      const embarkZ = Math.min(-18, frontZ - 4) - Math.random() * 8;
       embark = { x: SHORE_X - 1.2, z: embarkZ };  // justo en la línea de agua
       sailX = SHORE_X - 5 - Math.random() * 3;    // canal de navegación, mar adentro
       land = { x: FENCE_X0 - 0.5, z: 5 + Math.random() * 3 }; // playa sur, tras la valla interior
     } else {
       sx = THREE.MathUtils.clamp(x, FENCE_X0, FENCE_X1);
+      // Red de seguridad: aunque el emisor se equivoque, jamás al sur del frente.
+      sz = Math.min(z, frontZ - 2 - (type === 'boss' ? 6 : 0));
     }
     g.position.set(sx, 0, sz);
     this.scene.add(g);
@@ -688,8 +695,9 @@ export class Entities {
           H.stoneHit && H.stoneHit(p, 'fence');
         } else {
           this.fx.dirtBurst(p);
-          H.playerDamage && H.playerDamage(STONE_DMG_PLAYER, null);
-          H.stoneHit && H.stoneHit(p, 'player');
+          // El daño por piedra lo resuelve game.js: solo cuenta si el tirador está
+          // realmente cerca del impacto (ahora puede moverse por todo el sector).
+          H.stoneHit && H.stoneHit(p, 'player', STONE_DMG_PLAYER);
         }
       }
     }
@@ -936,7 +944,10 @@ export class Entities {
       if (z.thrower && z.stoneCd <= 0 && (z.state === 'advance' || z.state === 'fence' || z.state === 'invade')) {
         if (z.state === 'invade') {
           const pp = ctx.playerPos;
-          const towerBase = new THREE.Vector3(pp.x, 2, pp.z - 13);
+          const tb = ctx.towerBase || { x: pp.x, z: pp.z - 13 };
+          const towerBase = ctx.playerGrounded
+            ? new THREE.Vector3(pp.x, Math.max(1.2, pp.y - 1.2), pp.z)
+            : new THREE.Vector3(tb.x, 2, tb.z);
           const d = g.position.distanceTo(towerBase);
           if (d > 3.5 && d < 30) {
             this.throwStone(z, towerBase, 'player');
@@ -1138,11 +1149,13 @@ export class Entities {
         }
       } else if (z.state === 'invade') {
         const pp = ctx.playerPos;
-        // El francotirador está en lo alto de la torre: los infectados no pueden subir,
-        // se amontonan al pie de los pilares. Ese punto (~16 m por delante de la cámara)
-        // queda dentro del campo de visión al bajar la vista, así se les puede disparar.
-        const dzAssault = (pp.z - 13) - g.position.z;
-        const dx = pp.x - g.position.x, dz = dzAssault;
+        // Si el tirador ha bajado y está A PIE en el sector, van a por él (cuerpo a
+        // cuerpo real). Si está en una planta de la torre no pueden subir: se
+        // amontonan al pie de los pilares (punto fijo de asalto).
+        const tb = ctx.towerBase || { x: pp.x, z: pp.z - 13 };
+        const ax = ctx.playerGrounded ? pp.x : tb.x;
+        const az = ctx.playerGrounded ? pp.z : tb.z;
+        const dx = ax - g.position.x, dz = az - g.position.z;
         const d = Math.hypot(dx, dz);
         if (!z.siegeWarned) { z.siegeWarned = true; H.towerSiege && H.towerSiege(z); }
         z.sieging = (d <= 3);
@@ -1167,7 +1180,10 @@ export class Entities {
           g.position.y = 0;
           if (z.playerTick > 1.0) {
             z.playerTick = 0; z.attackT = 0.4;
-            H.playerDamage && H.playerDamage(z.dmg, z);
+            // A pie de suelo es un mordisco cuerpo a cuerpo real: hace la mitad de
+            // daño que el castigo de asalto a la torre (puedes huir y defenderte).
+            const meleeDmg = ctx.playerGrounded ? Math.max(2, Math.round(z.dmg * 0.5)) : z.dmg;
+            H.playerDamage && H.playerDamage(meleeDmg, z);
           }
         }
         if (z.sieging) {

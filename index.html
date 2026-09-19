@@ -123,57 +123,69 @@ canvas{display:block;touch-action:none}
 }
 #scopeView.hidden{display:none;opacity:0}
 
-/* Capa de desenfoque periférico ("entorno de la mira borroso para minimizar recursos") */
+/* La mira ocupa TODA la pantalla: ya no hay un círculo pequeño rodeado de negro.
+   Solo se ve el bisel en los cuatro bordes + un viñeteado suave de lente. */
 .scope-blur-layer{
   position:absolute;inset:0;
-  backdrop-filter:blur(14px) brightness(0.25) contrast(1.15);
-  -webkit-backdrop-filter:blur(14px) brightness(0.25) contrast(1.15);
-  mask-image:radial-gradient(circle at center, transparent 0, transparent 33vmin, black 37vmin, black 100%);
-  -webkit-mask-image:radial-gradient(circle at center, transparent 0, transparent 33vmin, black 37vmin, black 100%);
+  backdrop-filter:blur(6px) brightness(.6) contrast(1.08);
+  -webkit-backdrop-filter:blur(6px) brightness(.6) contrast(1.08);
+  mask-image:radial-gradient(ellipse 72% 72% at center, transparent 0 58%, rgba(0,0,0,.5) 80%, #000 100%);
+  -webkit-mask-image:radial-gradient(ellipse 72% 72% at center, transparent 0 58%, rgba(0,0,0,.5) 80%, #000 100%);
+}
+.scope-vignette{
+  position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at center, transparent 52%, rgba(0,0,0,.42) 88%, rgba(0,0,0,.72) 100%);
 }
 
-/* Bisel circular exterior de la lente del rifle */
+/* Bisel: marco fino a pantalla completa (solo se ven los bordes) */
 .scope-bezel{
-  position:absolute;
-  width:70vmin;height:70vmin;border-radius:50%;
-  box-shadow:0 0 0 9999px rgba(3,8,12,0.92),
-             inset 0 0 35px 10px rgba(0,0,0,0.98),
-             0 0 20px rgba(0,0,0,0.9);
-  border:2.5px solid rgba(124,248,255,0.4);
+  position:absolute;inset:0;border-radius:0;
+  border:2px solid rgba(124,248,255,.34);
+  box-shadow:inset 0 0 70px rgba(0,0,0,.7), inset 0 0 18px rgba(124,248,255,.1);
 }
+.scope-corner{position:absolute;width:34px;height:34px;border:2px solid rgba(124,248,255,.55)}
+.scope-corner.tl{top:8px;left:8px;border-right:0;border-bottom:0}
+.scope-corner.tr{top:8px;right:8px;border-left:0;border-bottom:0}
+.scope-corner.bl{bottom:8px;left:8px;border-right:0;border-top:0}
+.scope-corner.br{bottom:8px;right:8px;border-left:0;border-top:0}
 
-/* Retícula interna del francotirador */
+/* Retícula a pantalla completa */
 .scope-reticle{
-  position:absolute;width:70vmin;height:70vmin;
+  position:absolute;inset:0;
   display:flex;align-items:center;justify-content:center;
   pointer-events:none;
 }
 .scope-line-h{
-  position:absolute;left:8%;right:8%;height:1px;
-  background:rgba(124,248,255,0.85);box-shadow:0 0 4px rgba(124,248,255,0.5);
+  position:absolute;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,rgba(124,248,255,.15),rgba(124,248,255,.9) 22%,rgba(124,248,255,.9) 78%,rgba(124,248,255,.15));
+  box-shadow:0 0 4px rgba(124,248,255,.45);
 }
 .scope-line-v{
-  position:absolute;top:8%;bottom:8%;width:1px;
-  background:rgba(124,248,255,0.85);box-shadow:0 0 4px rgba(124,248,255,0.5);
+  position:absolute;top:0;bottom:0;width:1px;
+  background:linear-gradient(180deg,rgba(124,248,255,.15),rgba(124,248,255,.9) 22%,rgba(124,248,255,.9) 78%,rgba(124,248,255,.15));
+  box-shadow:0 0 4px rgba(124,248,255,.45);
 }
 .scope-center-dot{
   position:absolute;width:4px;height:4px;border-radius:50%;
   background:#ff5470;box-shadow:0 0 6px #ff5470;
 }
 .scope-circle-inner{
-  position:absolute;width:32vmin;height:32vmin;border-radius:50%;
-  border:1px dashed rgba(124,248,255,0.3);
+  position:absolute;width:min(46vh,46vw);height:min(46vh,46vw);border-radius:50%;
+  border:1px dashed rgba(124,248,255,.22);
 }
 .scope-mils{
   position:absolute;inset:0;
-  background-image:radial-gradient(circle at center, transparent 0, transparent 2px, rgba(124,248,255,0.5) 2.5px, transparent 3px);
-  background-size:24px 24px;background-position:center;opacity:.4;
+  background-image:radial-gradient(circle at center, transparent 0, transparent 1.6px, rgba(124,248,255,.45) 2px, transparent 2.6px);
+  background-size:34px 34px;background-position:center;opacity:.28;
+  mask-image:radial-gradient(circle at center, transparent 0 12%, #000 30%, #000 70%, transparent 92%);
+  -webkit-mask-image:radial-gradient(circle at center, transparent 0 12%, #000 30%, #000 70%, transparent 92%);
 }
 .scope-hud-readout{
-  position:absolute;bottom:14%;left:50%;transform:translateX(-50%);
+  position:absolute;bottom:calc(96px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
   display:flex;gap:12px;font:700 11px 'JetBrains Mono';letter-spacing:.12em;
   color:var(--cyan);background:rgba(5,13,18,.8);padding:3px 12px;border:1px solid #2b464d;
-  text-shadow:0 0 8px rgba(124,248,255,.6);border-radius:2px;
+  text-shadow:0 0 8px rgba(124,248,255,.6);border-radius:2px;flex-wrap:wrap;justify-content:center;
+  max-width:94vw;
 }
 .scope-hud-readout span b{color:#fff}
 
@@ -511,12 +523,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
   .tactical-left{left:10px;top:44px}
   .tactical-right{right:10px;top:44px}
   h1{font-size:46px}
-  .scope-bezel{width:86vmin;height:86vmin}
-  .scope-reticle{width:86vmin;height:86vmin}
-  .scope-blur-layer{
-    mask-image:radial-gradient(circle at center, transparent 0, transparent 40vmin, black 44vmin, black 100%);
-    -webkit-mask-image:radial-gradient(circle at center, transparent 0, transparent 40vmin, black 44vmin, black 100%);
-  }
+  .scope-hud-readout{bottom:calc(104px + env(safe-area-inset-bottom));font-size:10px;gap:8px}
 
   /* --- Editor de vallado como HOJA INFERIOR (bottom sheet): cabe en pantalla,
      se desplaza con el dedo y SALIR/COLOCAR siempre quedan a la vista --- */
@@ -561,6 +568,228 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
   .toast{white-space:normal;max-width:94vw;font-size:15px;line-height:1.35}
   #bossbar{width:min(360px,80vw)}
 }
+
+/* ==========================================================
+   REVISIÓN DE INTERFAZ (PC + MÓVIL)
+   - editor de vallado atracado a un lado, nunca en el centro
+   - barra flotante COLOCAR que aparta el menú
+   - joystick virtual que solo aparece mientras deslizas
+   - selector de arma táctil en botones grandes (no se colapsa con el zoom)
+   ========================================================== */
+
+/* ---- Editor de vallado: columna izquierda en PC (el centro queda libre) ---- */
+#fenceEditorHUD{
+  top:52px;left:14px;right:auto;bottom:88px;transform:none;
+  width:min(404px,34vw);max-height:none;overflow-y:auto;overscroll-behavior:contain;
+  border-top:1px solid var(--cyan);border-left:3px solid var(--cyan);
+  scrollbar-width:thin;scrollbar-color:#2c4a52 transparent;
+}
+/* Con el panel abierto, la barra de compras de la intermisión se aparta a la
+   derecha para que no quede tapada (y el panel no pisa la barra inferior). */
+body.fe-editing.fe-panel-open #interBar{
+  left:calc(424px + (100vw - 424px) / 2);
+  width:min(720px,calc(96vw - 440px));
+}
+#fenceEditorHUD::-webkit-scrollbar{width:8px}
+#fenceEditorHUD::-webkit-scrollbar-thumb{background:#2c4a52}
+#fenceEditorHUD.stowed{display:none !important}
+#fenceEditorHUD .fe-models{grid-template-columns:repeat(2,minmax(0,1fr))}
+#fenceEditorHUD .fe-models-grid{padding:16px 16px}
+#fenceEditorHUD .fe-controls-row{flex-direction:column;align-items:stretch;gap:8px}
+#fenceEditorHUD .fe-btn-rot,#fenceEditorHUD .fe-btn-tool{flex:1 1 auto;min-height:40px}
+#fenceEditorHUD .fe-footer{flex-direction:column;align-items:stretch}
+#fenceEditorHUD .fe-hint{font-size:10px;line-height:1.45}
+.fe-btn-stow{border-color:var(--cyan);color:var(--cyan);margin-left:auto}
+.fe-btn-stow:hover{background:var(--cyan);color:#071017}
+
+/* ---- Barra flotante del editor: COLOCAR + herramientas ---- */
+#feFab{position:fixed;right:16px;top:50%;transform:translateY(-50%);z-index:9;
+  display:flex;flex-direction:column;gap:7px;pointer-events:auto}
+#feFab.hidden{display:none !important}
+.fe-fab-place{display:flex;flex-direction:column;align-items:center;gap:1px;
+  min-width:138px;padding:9px 14px;cursor:pointer;touch-action:none;user-select:none;
+  background:linear-gradient(180deg,#1a5464,#0d2b35);border:2px solid var(--cyan);color:#eaffff;
+  box-shadow:0 0 18px rgba(124,248,255,.26),0 6px 18px rgba(0,0,0,.55);
+  font:800 17px 'Barlow Condensed';letter-spacing:.09em}
+.fe-fab-place b{font:inherit}
+.fe-fab-place small{font:700 9px 'JetBrains Mono';letter-spacing:.05em;color:#9fe9f2;opacity:.92}
+.fe-fab-place:hover{background:var(--cyan);color:#071017}
+.fe-fab-place:hover small{color:#0a2028}
+.fe-fab-place:active{transform:scale(.96)}
+.fe-fab-place:disabled{opacity:.38;cursor:not-allowed;transform:none}
+.fe-fab-btn{width:58px;height:52px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:1px;align-self:flex-end;cursor:pointer;touch-action:none;
+  user-select:none;background:rgba(9,22,29,.94);border:1.5px solid #4a6a73;color:#dffcff;
+  font-size:17px;line-height:1}
+.fe-fab-btn small{font:700 8px 'JetBrains Mono';letter-spacing:.03em;opacity:.78}
+.fe-fab-btn em{font:700 7px 'JetBrains Mono';font-style:normal;color:var(--cyan);letter-spacing:.02em}
+.fe-fab-btn:hover{border-color:var(--cyan);color:#fff}
+.fe-fab-btn.active{background:var(--cyan);color:#071017;border-color:var(--cyan)}
+.fe-fab-btn.active small,.fe-fab-btn.active em{color:#0a2028;opacity:.85}
+.fe-fab-exit{border-color:#a35464;color:#ffc9d3}
+.fe-fab-exit:hover{background:var(--red);color:#fff;border-color:var(--red)}
+.fe-fab-score{align-self:flex-end;font:700 10px 'JetBrains Mono';color:var(--amber);
+  background:rgba(6,14,19,.88);border:1px solid #3a4f57;padding:3px 7px}
+
+/* ---- Planta actual y aviso de estar a pie de suelo ---- */
+#floorPill b{color:var(--amber)}
+#floorVal{display:inline-block}
+#floorVal.bump{animation:floorBump .3s ease-out}
+@keyframes floorBump{0%{transform:scale(1)}40%{transform:scale(1.22);color:#fff}100%{transform:scale(1)}}
+#groundWarn{position:absolute;left:50%;top:calc(44px + env(safe-area-inset-top));transform:translateX(-50%);
+  display:none;z-index:5;max-width:92vw;text-align:center;
+  font:700 10px 'JetBrains Mono';letter-spacing:.07em;color:#ffd7de;
+  background:rgba(48,10,18,.9);border:1px solid var(--red);padding:4px 10px;
+  box-shadow:0 0 16px rgba(255,84,112,.32)}
+#groundWarn.show{display:block}
+
+/* ---- Capas táctiles: solo marcan zonas, no bloquean nada ---- */
+#touchAimPad{position:absolute;left:0;right:0;top:36px;bottom:0;width:auto;
+  pointer-events:none;z-index:1}
+#moveZone{position:absolute;left:0;top:36px;width:44%;bottom:0;
+  pointer-events:none;z-index:2}
+
+/* ---- Joystick virtual (aparece donde apoyas el pulgar) ---- */
+#joyBase{position:absolute;left:0;top:0;width:132px;height:132px;
+  transform:translate(-50%,-50%);border-radius:50%;display:none;z-index:3;
+  border:2px solid rgba(124,248,255,.34);pointer-events:none;opacity:0;
+  background:radial-gradient(circle,rgba(10,28,36,.42),rgba(6,16,22,.1));
+  transition:opacity .12s ease-out}
+body.is-touch #joyBase{display:block}
+#joyBase.show{opacity:1}
+#joyKnob{position:absolute;left:50%;top:50%;width:56px;height:56px;
+  transform:translate(-50%,-50%);border-radius:50%;
+  border:1.5px solid rgba(190,250,255,.8);
+  background:radial-gradient(circle at 38% 34%,rgba(150,250,255,.92),rgba(18,62,74,.94));
+  box-shadow:0 0 18px rgba(124,248,255,.45)}
+
+/* ---- Selector de arma táctil (rejilla 2×2 de botones grandes) ---- */
+#touchWeaponBar{display:grid;grid-template-columns:repeat(2,46px);gap:6px;pointer-events:auto}
+.wbtn{position:relative;width:46px;height:46px;display:grid;place-items:center;cursor:pointer;
+  background:rgba(10,24,32,.93);border:1.5px solid #46666f;color:#cfe9ef;font-size:18px;
+  touch-action:none;user-select:none;-webkit-user-select:none;
+  transition:transform .08s ease,border-color .12s ease}
+.wbtn i{font-style:normal;line-height:1}
+.wbtn small{position:absolute;right:3px;bottom:0;font:700 8px 'JetBrains Mono';opacity:.65}
+.wbtn.sel{border-color:var(--cyan);color:#fff;background:rgba(18,54,66,.96);
+  box-shadow:0 0 12px rgba(124,248,255,.34)}
+.wbtn.locked{opacity:.3}
+.wbtn:active{transform:scale(.92)}
+
+/* ---- Racimo derecho: rejilla de armas + recarga/mira + fuego en fila ---- */
+.touch-right-cluster{position:absolute;right:12px;bottom:calc(70px + env(safe-area-inset-bottom));
+  display:flex;flex-direction:row;align-items:flex-end;gap:10px;z-index:4}
+.touch-col{display:flex;flex-direction:column;gap:8px;align-items:center}
+.tbtn-pause{border-color:var(--amber);color:var(--amber)}
+.pause-hint{margin-top:9px;font:700 11px 'JetBrains Mono';letter-spacing:.08em;color:var(--cyan) !important}
+
+/* ---- Ventanas de PC estrechas: que la barra inferior no se salga ---- */
+@media(max-width:1250px) and (min-width:901px){
+  .action{min-width:84px;padding:4px 7px;font-size:11px}
+  .action span{display:none}
+  .midbars{min-width:130px}
+  .weapon-info p{display:none}
+}
+
+/* ==========================================================
+   MÓVIL / TABLETA (pantalla baja y puntero grueso)
+   Zonas exclusivas para que nada se solape (probado en 844×390 y 640×360):
+     arriba-izq  : oleada + planta + objetivos
+     arriba-der  : amenaza + racha
+     der (44-190): barra de compras de la intermisión
+     izq (246-306): píldoras de acción
+     der (194-294): armas 2×2 + recarga/mira + FUEGO
+     abajo       : arma/munición + vallas/integridad
+     abajo-izq   : JOYSTICK (solo mientras deslizas) y, en el editor, la barra COLOCAR
+   ========================================================== */
+@media(max-width:900px),(pointer:coarse){
+  .status .opt{display:none}                 /* FPS y récord fuera: estorban */
+  .topbar{height:36px;padding:0 7px;gap:5px}
+  .brand{font-size:12px;letter-spacing:.06em}
+  .brand small{display:none}
+  .status{gap:8px;font-size:10px}
+  .iconbtn{width:38px;height:32px;font-size:15px;flex:none}
+
+  .tactical-left,.tactical-right{top:calc(40px + env(safe-area-inset-top));gap:3px}
+  .tactical-left{left:6px;max-width:40vw}
+  .tactical-right{right:6px;align-items:flex-end;max-width:40vw}
+  .pill{font-size:9.5px;padding:2px 7px}
+  #objList{max-width:40vw}
+  #objList .obj{font-size:8px;padding:1.5px 5px}
+  .bossbar{top:calc(40px + env(safe-area-inset-top));width:min(240px,40vw)}
+
+  /* barra inferior compacta: panel de arma + barras finas */
+  .bottom{left:6px;right:6px;bottom:calc(6px + env(safe-area-inset-bottom));
+    gap:6px;z-index:5;justify-content:space-between;flex-wrap:nowrap}
+  .weapon-hud{padding:4px 7px;gap:6px}
+  .weapon-icon{width:28px;height:28px;font-size:14px}
+  .weapon-info h3{font-size:11px}
+  .weapon-info p{display:none}
+  #slots{display:none}                       /* lo sustituye la rejilla táctil 2×2 */
+  .ammo{font-size:16px}
+  .midbars{min-width:0;width:min(172px,40vw);padding:4px 7px}
+  .bar-row{font-size:7.5px;gap:3px}
+  .bar{height:5px}
+  .turret-badge{font-size:8px}
+
+  /* racimo derecho en FILA: armas 2×2 · recarga/mira · fuego */
+  .touch-right-cluster{right:10px;bottom:calc(66px + env(safe-area-inset-bottom));
+    flex-direction:row;align-items:flex-end;gap:8px}
+  .tbtn{touch-action:none;user-select:none;-webkit-user-select:none}
+  .tbtn-fire{width:74px;height:74px;font-size:17px}
+  .tbtn-scope{width:54px;height:54px;font-size:13px}
+  .tbtn-reload{width:54px;height:40px;font-size:10px}
+  #touchWeaponBar{grid-template-columns:repeat(2,44px);gap:5px}
+  .wbtn{width:44px;height:44px;font-size:17px}
+
+  /* píldoras de acción: fila inferior izquierda, reservando el hueco del racimo */
+  .touch-action-bar{left:6px;bottom:calc(54px + env(safe-area-inset-bottom));
+    flex-direction:row;flex-wrap:wrap;align-items:flex-end;gap:4px;
+    max-width:calc(100vw - 276px);z-index:4}
+  .tbtn-pill{font-size:9.5px;padding:5px 7px}
+  .tbtn-pause{border-color:var(--amber);color:var(--amber)}
+
+  /* compras de intermisión: banda superior derecha, fuera del racimo de fuego */
+  #interBar{left:auto;right:8px;transform:none;top:calc(84px + env(safe-area-inset-top));
+    bottom:auto;width:min(58vw,420px);padding:6px;font-size:10px}
+  .ib-col{width:47%;min-width:0}
+  .ib-btn{min-height:34px;padding:3px 5px;font-size:9px}
+
+  /* editor de vallado: hoja inferior (ya definida arriba) + barra flotante abajo-izq */
+  #feFab{left:6px;right:auto;top:auto;bottom:calc(8px + env(safe-area-inset-bottom));
+    transform:none;flex-direction:row;align-items:flex-end;gap:6px;
+    max-width:calc(100vw - 200px);flex-wrap:wrap}
+  .fe-fab-place{min-width:104px;height:48px;padding:4px 9px;font-size:15px}
+  .fe-fab-place small{font-size:8px}
+  .fe-fab-btn{width:46px;height:44px;font-size:16px;align-self:auto}
+  .fe-fab-score{align-self:auto;font-size:9px;padding:2px 5px}
+  /* al editar no hacen falta las píldoras de habilidad ni el panel de arma:
+     así la barra COLOCAR tiene todo el borde inferior para ella sola */
+  body.fe-editing .touch-action-bar{display:none}
+  body.fe-editing .weapon-hud{visibility:hidden}
+  body.fe-editing #interBar{display:none !important}
+  /* con la hoja abierta, la barra flotante sube justo por encima de ella */
+  body.fe-panel-open #feFab{bottom:calc(58vh + 10px)}
+  #fenceEditorHUD .fe-hint{font-size:9px}
+
+  /* avisos centrados, sin tapar los pulgares */
+  #groundWarn{top:auto;bottom:calc(112px + env(safe-area-inset-bottom));font-size:9px;max-width:70vw}
+  .center-msg{font-size:clamp(38px,13vw,64px)}
+  .center-sub{font-size:clamp(11px,3.4vw,15px)}
+  #killFeed{top:calc(96px + env(safe-area-inset-top))}
+  .scope-hud-readout{bottom:calc(104px + env(safe-area-inset-bottom));font-size:10px;gap:8px}
+}
+
+/* Pantallas muy bajas (móvil apaisado pequeño): fuera lo prescindible */
+@media(max-height:430px){
+  #objList{display:none}
+  .brand{display:none}
+  .fe-fab-score{display:none}
+  .tbtn-pill{font-size:9px;padding:4px 6px}
+  .touch-action-bar{bottom:calc(48px + env(safe-area-inset-bottom));max-width:calc(100vw - 268px)}
+  #interBar{top:calc(70px + env(safe-area-inset-top));width:min(56vw,380px)}
+  .ib-btn{min-height:30px;font-size:8.5px}
+}
 </style>
 </head>
 <body>
@@ -569,7 +798,10 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
 <!-- MIRA TELESCÓPICA CON DESENFOQUE PERIFÉRICO -->
 <div id="scopeView" class="hidden">
   <div class="scope-blur-layer"></div>
+  <div class="scope-vignette"></div>
   <div class="scope-bezel"></div>
+  <div class="scope-corner tl"></div><div class="scope-corner tr"></div>
+  <div class="scope-corner bl"></div><div class="scope-corner br"></div>
   <div class="scope-reticle">
     <div class="scope-line-h"></div>
     <div class="scope-line-v"></div>
@@ -603,8 +835,8 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
     </div>
     <div class="status">
       <span>PTS <b id="scoreVal">0</b></span>
-      <span>RÉCORD <b id="bestVal">0</b></span>
-      <span>FPS <b id="fps">60</b></span>
+      <span class="opt">RÉCORD <b id="bestVal">0</b></span>
+      <span class="opt">FPS <b id="fps">60</b></span>
       <button class="iconbtn" id="btnShopTop" title="Mejoras (B)">▲</button>
       <button class="iconbtn" id="btnFullscreen" title="Pantalla completa">⛶</button>
       <button class="iconbtn" id="btnMute" title="Silenciar (M)">♪</button>
@@ -615,8 +847,12 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
   <!-- Pastillas tácticas superiores izquierda / derecha -->
   <div class="tactical-left hud-hide-scoped">
     <div class="pill" id="wavePill">OLEADA <b id="waveVal">01</b> · <span id="remainVal">0</span> HOSTILES</div>
+    <div class="pill" id="floorPill" title="Planta de la torre donde estás">⌂ <b id="floorVal">NIDO · P1</b> · <span id="moveHintVal">W A S D</span></div>
     <div id="objList"></div>
   </div>
+
+  <!-- Aviso: a pie de suelo los infectados sí pueden alcanzarte -->
+  <div id="groundWarn" class="hud-hide-scoped">⚠ ESTÁS A PIE DE SUELO · LOS INFECTADOS PUEDEN ALCANZARTE · SUBE A LA TORRE</div>
 
   <div class="tactical-right hud-hide-scoped">
     <div class="pill">AMENAZA <b id="threatVal">0</b>%</div>
@@ -652,7 +888,9 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
       <div class="fe-status">
         <div class="fe-stat-pill">PUNTOS: <b id="feScore">0</b></div>
         <div class="fe-stat-pill">INTERMISIÓN: <b id="feTimer">30s</b></div>
+        <div class="fe-stat-pill">COLOCADAS: <b id="feFabCount">0 TRAMOS</b></div>
         <button id="feExtendTime" class="fe-btn-time">⏱ +30s TIEMPO (50 PTS)</button>
+        <button id="feStowBtn" class="fe-btn-time fe-btn-stow" title="Apartar el panel para ver la retícula (H)">◀ APARTAR MENÚ</button>
       </div>
     </div>
 
@@ -718,6 +956,19 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
     </div>
   </div>
 
+  <!-- BARRA FLOTANTE DEL EDITOR: siempre a mano, no tapa el centro de la pantalla.
+       COLOCAR pone la valla en la retícula Y aparta el menú para ver dónde cae. -->
+  <div id="feFab" class="hidden">
+    <button id="fePlaceFloat" class="fe-fab-place" type="button" title="Colocar en la retícula y apartar el menú (Espacio)">
+      <b>🛡 COLOCAR</b><small id="feFabModel">MALLA METÁLICA · 60 PTS</small>
+    </button>
+    <button id="feFabRot" class="fe-fab-btn" type="button" title="Rotar (R)">⟲<small>ROTAR</small></button>
+    <button id="feFabTool" class="fe-fab-btn" type="button" title="Cambiar herramienta (E / X)">✚<small>MODO</small><em id="feFabToolName">CONSTRUIR</em></button>
+    <button id="feFabPanel" class="fe-fab-btn" type="button" title="Mostrar u ocultar el menú del vallado (H)">☰<small>MENÚ</small></button>
+    <button id="feFabExit" class="fe-fab-btn fe-fab-exit" type="button" title="Salir del editor (V / ESC)">✕<small>SALIR</small></button>
+    <div class="fe-fab-score" id="feFabScore">0 PTS</div>
+  </div>
+
   <!-- Barra inferior minimalista -->
   <div class="bottom">
     <div class="hud-panel weapon-hud">
@@ -755,9 +1006,16 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
 
   <!-- Capa de controles táctiles adaptativos para Android / Móviles -->
   <div id="touchControls">
+    <!-- Superficie de puntería: ocupa todo el hueco libre (se apunta arrastrando en
+         cualquier zona que no sea un botón). -->
     <div id="touchAimPad"></div>
+    <!-- Zona de movimiento (mitad izquierda): al deslizar aparece el joystick justo
+         donde apoyas el pulgar y desaparece al soltar. -->
+    <div id="moveZone"></div>
+    <div id="joyBase" aria-hidden="true"><div id="joyKnob"></div></div>
 
     <div class="touch-action-bar hud-hide-scoped">
+      <button class="tbtn-pill tbtn-pause" id="btnTouchPause">⏸ PAUSA</button>
       <button class="tbtn-pill" id="btnTouchFence">🛡 VALLAS</button>
       <button class="tbtn-pill hot" id="btnTouchTurret">⚙ TORRETA (<span id="touchTurretCount">0</span>/4)</button>
       <button class="tbtn-pill" id="btnTouchBoat">⛵ LANCHA (<span id="touchBoatCount">0</span>/2)</button>
@@ -767,8 +1025,13 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
     </div>
 
     <div class="touch-right-cluster">
-      <div class="tbtn tbtn-reload" id="btnTouchReload">RECARGA</div>
-      <div class="tbtn tbtn-scope" id="btnTouchScope">MIRA</div>
+      <!-- Selector de arma: botones grandes en rejilla 2×2 (antes eran ranuras de
+           32×24 px que se colapsaban en cuanto ajustabas el zoom del navegador) -->
+      <div id="touchWeaponBar" class="hud-hide-scoped"></div>
+      <div class="touch-col">
+        <div class="tbtn tbtn-reload" id="btnTouchReload">RECARGA</div>
+        <div class="tbtn tbtn-scope" id="btnTouchScope">MIRA</div>
+      </div>
       <div class="tbtn tbtn-fire" id="btnTouchFire">FUEGO</div>
     </div>
   </div>
@@ -787,13 +1050,14 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
       <button class="start ghost" id="btnHelp">CONTROLES</button>
     </div>
     <div class="menuBest" id="menuBest">RÉCORD LOCAL: 0 PTS</div>
-    <div class="controls"><b>PC:</b> Ratón gira la vista 360° (sin invertir: derecha = derecha, arriba = arriba) · Click dispara · RMB/Espacio zoom telescópico · <b>ALT</b> muestra el cursor (oculto en combate) · ESC / botón QUITAR MIRA para salir · <b>V</b> editor de vallas (click = colocar en la retícula) · <b>E</b> torreta autónoma (hasta 4) · <b>L</b> lancha de defensa en nuestra playa (200 pts) · <b>R</b> recarga · <b>F</b> repara · <b>B</b> mejoras<br><b>Android:</b> Arrastra para girar la vista 360° · Tocar la pantalla o pulsar COLOCAR coloca la valla en la retícula (editor <b>VALLAS</b>) · Botón MIRA con zoom y desenfoque · Botón QUITAR MIRA para salir · Botón FUEGO · Botón TORRETA · Botón LANCHA</div>
+    <div class="controls"><b>PC:</b> Ratón gira la vista 360° (sin invertir: derecha = derecha, arriba = arriba) · Click dispara · RMB/Espacio zoom telescópico · <b>ALT</b> muestra el cursor (oculto en combate) · ESC / botón QUITAR MIRA para salir · <b>V</b> editor de vallas (click = colocar en la retícula) · <b>E</b> torreta autónoma (hasta 4) · <b>L</b> lancha de defensa en nuestra playa (200 pts) · <b>R</b> recarga · <b>F</b> repara · <b>B</b> mejoras<br><b>PC:</b> <b>W A S D</b> mueve al tirador a pie por las 4 plantas de la torre y el sector (Shift corre) · <b>1-4</b> o la rueda cambian de arma · <b>H</b> aparta el menú del vallado<br><b>Android:</b> Desliza en la mitad izquierda para que aparezca el <b>joystick</b> de movimiento · Arrastra en el resto de la pantalla para girar la vista 360° · Rejilla de 4 botones grandes para cambiar de arma · Tocar la pantalla o pulsar <b>COLOCAR</b> pone la valla en la retícula y aparta el menú · Botón MIRA a pantalla completa · Botón QUITAR MIRA · Botón FUEGO · ⏸ PAUSA congela todo</div>
   </div>
 </div>
 
 <div class="screen hidden" id="pauseMenu">
   <div class="card"><div class="kicker">OPERACIÓN EN PAUSA</div><h2>EN ESPERA</h2>
     <p>El perímetro aguanta. Ajusta tu estrategia, operador.</p>
+    <p class="pause-hint" id="pauseHint">PARTIDA CONGELADA</p>
     <div class="btnrow">
       <button class="start" id="btnResume">REANUDAR →</button>
       <button class="start ghost" id="btnShop2">MEJORAS</button>
@@ -824,6 +1088,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
 <div class="screen hidden" id="settingsMenu">
   <div class="card"><div class="kicker">CONFIGURACIÓN</div><h2>AJUSTES</h2>
     <div class="setrow"><span>Sensibilidad de puntería</span><input type="range" id="setSens" min="20" max="300" value="100"><b id="sensVal">1.0</b></div>
+    <div class="setrow"><span>Sensibilidad con la mira puesta</span><input type="range" id="setAimSens" min="50" max="250" value="120"><b id="aimSensVal">1.2×</b></div>
     <div class="setrow"><span>Volumen general</span><input type="range" id="setMaster" min="0" max="100" value="80"><b id="masterVal">80</b></div>
     <div class="setrow"><span>Música</span><input type="range" id="setMusic" min="0" max="100" value="55"><b id="musicVal">55</b></div>
     <div class="setrow"><span>Efectos</span><input type="range" id="setSfx" min="0" max="100" value="90"><b id="sfxVal">90</b></div>
@@ -847,11 +1112,15 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
 <div class="screen hidden" id="helpMenu">
   <div class="card"><div class="kicker">MANUAL DE COMBATE ADAPTATIVO</div><h2>CONTROLES PC & ANDROID</h2>
     <div class="keys">
+      <b>W A S D / JOYSTICK IZQ.</b><span>Mover al tirador a pie: recorre las 4 plantas de la torre (BASE · NIDO · OBSERVATORIO · VIGÍA), sube y baja por la caja de escaleras de la cara sur y pisa el suelo de nuestro lado de la frontera. <b>Shift</b> corre. En móvil el joystick aparece solo mientras deslizas en la mitad izquierda</span>
+      <b>ESCALERAS</b><span>Entrada a nivel de suelo por el lado OESTE de la caja (marcas cyan en el suelo). Tramos en tijera con rellanos: camina hacia arriba o hacia abajo, no hay saltos ni botones</span>
+      <b>A PIE DE SUELO</b><span>Los infectados que rebasan las vallas van a por ti cuerpo a cuerpo y las piedras que caen cerca hieren. Sube a la torre para estar a salvo</span>
       <b>RATÓN / ARRASTRE (360°)</b><span>La cámara gira 360° libremente, con recorrido completo hasta el horizonte y al pie de la torre. Sin invertir direcciones: derecha = girar a la derecha, arriba = subir. (Opción de invertir X/Y en AJUSTES, desactivada por defecto)</span>
       <b>CURSOR (PC)</b><span>Oculto en combate (estilo puntero bloqueado). Mantén <b>ALT</b> para mostrarlo y alcanzar los botones; al soltarlo (o hacer clic) se vuelve a ocultar</span>
       <b>CLICK IZQ / BOTÓN FUEGO</b><span>Disparar arma seleccionada (o colocar valla en modo edición, en el punto exacto de la retícula)</span>
       <b>CLICK DER / ESPACIO / BOTÓN MIRA</b><span>Activar mira telescópica con zoom y desenfoque periférico</span>
       <b>V / BOTÓN VALLAS</b><span>Modo Edición de Vallado: colocar vallas personalizadas con precisión en todo el corredor (costa → muro, horizonte → sacos), rotar, demoler y reparar. El holograma + retícula marcan el punto exacto; el holograma se pone rojo si la zona está fuera de límites u ocupada</span>
+      <b>COLOCAR / APARTAR MENÚ</b><span>El botón flotante <b>COLOCAR</b> pone la valla en la retícula y aparta el menú para que no tape nada; <b>MENÚ</b> (o <b>H</b>) lo vuelve a traer. En PC el panel queda atracado a la izquierda, fuera del centro de la pantalla. Las vallas colocadas se guardan con la partida y solo desaparecen al empezar de cero o al demolerlas</span>
       <b>TOC / CLICK (EN EDITOR)</b><span>PC: click izquierdo en el suelo. Móvil: tocar la pantalla o pulsar COLOCAR. Rueda del ratón o R: rotación</span>
       <b>R / RUELA (EN EDITOR)</b><span>Rotar valla (horizontal 0°, diagonal 45°, vertical 90°, diagonal 135°)</span>
       <b>EXTENDER TIEMPO</b><span>+30 segundos de preparación antes de cada ronda a cambio de 50 puntos</span>
@@ -863,7 +1132,7 @@ h2{font-size:36px;margin:6px 0 12px;letter-spacing:.04em}
       <b>F / BOTÓN REPARAR</b><span>Reparar las vallas defensivas (120 pts)</span>
       <b>T / BOTÓN APOYO</b><span>Solicitar ataque aéreo de helicóptero (Oleada 3+)</span>
       <b>B</b><span>Tienda de mejoras tácticas</span>
-      <b>P / ESC</b><span>Pausar partida</span>
+      <b>P / ESC / ⏸ PAUSA</b><span>Pausar: el juego se congela por completo (enemigos, proyectiles, clima, agua, helicóptero y audio). En PC, si sueltas el bloqueo del ratón con ESC también se pausa solo</span>
       <b>M</b><span>Silenciar audio</span>
       <b>DINOSAURIOS JEFES</b><span>Carnotaurus y Titanosaurus sustituyen a los jefes de oleada con puntos críticos en la cabeza</span>
     </div>
