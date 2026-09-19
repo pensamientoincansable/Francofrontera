@@ -398,6 +398,8 @@ body.is-touch #touchControls{display:block}
 .fe-kicker{font:700 9px 'JetBrains Mono';letter-spacing:.2em;color:var(--cyan)}
 .fe-header h2{font-size:22px;letter-spacing:.08em;margin:0;color:#f0fcff}
 .fe-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.fe-note{font:600 9px/1.6 'JetBrains Mono';letter-spacing:.05em;color:#8fb7c4;background:rgba(124,248,255,.06);border:1px solid rgba(124,248,255,.22);padding:7px 9px}
+.fe-note b{color:#7cf8ff}
 .fe-stat-pill{font:700 11px 'JetBrains Mono';background:rgba(12,27,35,.85);border:1px solid #38545c;padding:4px 10px;color:#9bb8be}
 .fe-stat-pill b{color:var(--cyan)}
 .fe-btn-time{
@@ -894,6 +896,11 @@ body.is-touch #joyBase{display:block}
       </div>
     </div>
 
+    <div class="fe-note">
+      CÁMARA LIBRE: <b>W A S D</b> mueve la vista por el terreno · <b>arrastrar ratón</b> gira la cabeza ·
+      <b>rueda</b> zoom · <b>Shift / C</b> sube / baja · <b>ESPACIO</b> o <b>ENTER</b> coloca la valla en la retícula
+    </div>
+
     <div class="fe-body">
       <!-- Modelos de vallas -->
       <div class="fe-section">
@@ -1096,6 +1103,8 @@ body.is-touch #joyBase{display:block}
     <div class="setrow"><span>Voz de radio (síntesis)</span><select id="setVoice"><option value="on">Activada</option><option value="off">Desactivada</option></select></div>
     <div class="setrow"><span>Invertir puntería horizontal (X)</span><input type="checkbox" id="setInvertX"><b id="invertXVal">NO</b></div>
     <div class="setrow"><span>Invertir puntería vertical (Y)</span><input type="checkbox" id="setInvertY"><b id="invertYVal">NO</b></div>
+    <div class="setrow"><span>Efectos climáticos (tormenta, lluvia y rayos)</span><input type="checkbox" id="setWeather" checked><b id="weatherVal">SÍ</b></div>
+    <div class="setrow"><span>Velocidad de las mareas</span><input type="range" id="setTide" min="0" max="300" value="100"><b id="tideVal">1.0×</b></div>
     <p class="set-note">Por defecto la cámara NO invierte ninguna dirección: ratón/dedo a la derecha → la vista gira a la derecha. En PC el cursor se oculta en combate; mantén <b>ALT</b> para mostrarlo.</p>
     <div class="btnrow"><button class="start" id="btnCloseSettings">VOLVER →</button></div>
   </div>
@@ -1119,10 +1128,12 @@ body.is-touch #joyBase{display:block}
       <b>CURSOR (PC)</b><span>Oculto en combate (estilo puntero bloqueado). Mantén <b>ALT</b> para mostrarlo y alcanzar los botones; al soltarlo (o hacer clic) se vuelve a ocultar</span>
       <b>CLICK IZQ / BOTÓN FUEGO</b><span>Disparar arma seleccionada (o colocar valla en modo edición, en el punto exacto de la retícula)</span>
       <b>CLICK DER / ESPACIO / BOTÓN MIRA</b><span>Activar mira telescópica con zoom y desenfoque periférico</span>
-      <b>V / BOTÓN VALLAS</b><span>Modo Edición de Vallado: colocar vallas personalizadas con precisión en todo el corredor (costa → muro, horizonte → sacos), rotar, demoler y reparar. El holograma + retícula marcan el punto exacto; el holograma se pone rojo si la zona está fuera de límites u ocupada</span>
-      <b>COLOCAR / APARTAR MENÚ</b><span>El botón flotante <b>COLOCAR</b> pone la valla en la retícula y aparta el menú para que no tape nada; <b>MENÚ</b> (o <b>H</b>) lo vuelve a traer. En PC el panel queda atracado a la izquierda, fuera del centro de la pantalla. Las vallas colocadas se guardan con la partida y solo desaparecen al empezar de cero o al demolerlas</span>
-      <b>TOC / CLICK (EN EDITOR)</b><span>PC: click izquierdo en el suelo. Móvil: tocar la pantalla o pulsar COLOCAR. Rueda del ratón o R: rotación</span>
-      <b>R / RUELA (EN EDITOR)</b><span>Rotar valla (horizontal 0°, diagonal 45°, vertical 90°, diagonal 135°)</span>
+      <b>V / BOTÓN VALLAS</b><span>Modo Edición de Vallado: la vista vuela rápidamente a unos <b>6 m de altura sobre el terreno construible</b> y desde ahí colocas vallas personalizadas con precisión en todo el corredor (costa → muro, horizonte → sacos), rotas, demueles y reparas. El holograma + retícula marcan el punto exacto; el holograma se pone rojo si la zona está fuera de límites u ocupada</span>
+      <b>CÁMARA DEL EDITOR</b><span><b>W A S D</b> mueve la posición de la visión (el cuerpo) con total libertad sobre el terreno · arrastrar el ratón gira la vista (la cabeza) · <b>rueda del ratón</b> = zoom · <b>Shift</b> sube y <b>C</b> baja. En móvil el joystick mueve la cámara y deslizar gira la vista</span>
+      <b>COLOCAR / APARTAR MENÚ</b><span><b>ESPACIO</b> o <b>ENTER</b> colocan la valla exactamente en la retícula (colocación por tecla, máxima precisión). El botón flotante <b>COLOCAR</b> hace lo mismo y aparta el menú para que no tape nada; <b>MENÚ</b> (o <b>H</b>) lo vuelve a traer. En PC el panel queda atracado a la izquierda, fuera del centro de la pantalla. Las vallas colocadas se guardan con la partida y solo desaparecen al empezar de cero o al demolerlas</span>
+      <b>TOC / CLICK (EN EDITOR)</b><span>PC: arrastrar el ratón gira la vista, un click corto coloca en la retícula, rueda = zoom. Móvil: deslizar gira la vista, tocar la pantalla o pulsar COLOCAR coloca</span>
+      <b>R / CLICK DER. (EN EDITOR)</b><span>Rotar valla (horizontal 0°, diagonal 45°, vertical 90°, diagonal 135°)</span>
+      <b>AJUSTES // CLIMA Y MAREAS</b><span>En AJUSTES puedes <b>desactivar los efectos climáticos</b> (tormenta, lluvia y rayos) y regular la <b>velocidad de las mareas</b> (0× = mar en calma, hasta 3× = marejada rápida)</span>
       <b>EXTENDER TIEMPO</b><span>+30 segundos de preparación antes de cada ronda a cambio de 50 puntos</span>
       <b>E / C / BOTÓN TORRETA</b><span>Colocar ametralladora autónoma (hasta 4 en el perímetro)</span>
       <b>L / BOTÓN LANCHA</b><span>Fabricar lancha de defensa en nuestra playa (200 pts, oleada 2+, máx. 2)</span>

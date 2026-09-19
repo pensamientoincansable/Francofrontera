@@ -103,6 +103,10 @@ export class World {
     this.hologramGroup.name = 'fenceHologram';
     this.scene.add(this.hologramGroup);
     this.time = 0;
+    // Reloj propio del agua: la VELOCIDAD DE LAS MAREAS se controla desde AJUSTES
+    // (tideSpeed 0 = mar en calma, 1 = normal, hasta 3 = marejada rápida).
+    this.waterT = 18;
+    this.tideSpeed = 1;
     this.buildLights();
     this.buildSky();
     this.buildTerrain();
@@ -1372,11 +1376,13 @@ export class World {
     this.sun.position.set(Math.cos(ang) * 38, Math.max(7, 16 + Math.sin(ang) * 22), 20);
     this.hemi.intensity = (a.hemi + (b.hemi - a.hemi) * f) * (1 - storm * 0.3) + lightning * 2.5;
     this.flashDir.intensity = lightning * 5;
-    // agua
+    // agua (mareas): avanza con su propio reloj según la velocidad configurada
     lerpColor(a.water, b.water, f, C);
     if (storm > 0) C.multiplyScalar(1 - storm * 0.35);
     this.water.material.color.copy(C);
-    this.updateWater(t, storm);
+    const tide = Number.isFinite(this.tideSpeed) ? this.tideSpeed : 1;
+    this.waterT += dt * tide;
+    this.updateWater(this.waterT, storm);
     // lámparas y estrellas
     const lampI = (a.lamp + (b.lamp - a.lamp) * f) * (1 + storm * 0.25);
     for (const l of this.lampLights) l.intensity = lampI;
